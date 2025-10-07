@@ -1,0 +1,181 @@
+from fastapi import FastAPI, Depends, HTTPException, Query, status
+from fastapi.security import OAuth2PasswordBearer
+from datetime import datetime
+from typing import Optional, List, Literal
+from uuid import UUID, uuid4
+
+from calendar_api_pm import (
+    Reminder,
+    EventCreate,
+    EventUpdate,
+    UserCreate,
+    UserRead,
+    UserUpdate,
+    RSVPCreate,
+    RSVPRead,
+    LoginRequest,
+)
+
+app = FastAPI(title="Calendar API", version="0.1.0")
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+
+async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserRead:
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
+    # minimal placeholder user (no created/updated fields here)
+    return UserRead(
+        id=uuid4(),
+        email="demo@example.com",
+        full_name="Demo User",
+        avatar_url=None,
+        # Note: your UserRead model may require created_at/updated_at;
+        # if so, add defaults there or relax the model for this basic structure.
+        created_at=datetime.now().astimezone(),
+        updated_at=datetime.now().astimezone(),
+    )
+
+@app.post("/login")
+async def login(payload: LoginRequest):
+    if payload.email and payload.password:
+        return {"access_token": "demo-token", "token_type": "bearer"}
+    raise HTTPException(status_code=401, detail="Invalid credentials")
+
+@app.post("/logout", status_code=204)
+async def logout(current_user: UserRead = Depends(get_current_user)):
+    return None
+
+# ---------------- Users ----------------
+@app.post("/users", status_code=201)
+async def create_user(payload: UserCreate):
+    return {
+        "id": str(uuid4()),
+        "email": payload.email,
+        "full_name": payload.full_name,
+        "avatar_url": payload.avatar_url,
+    }
+
+@app.get("/users/{id}")
+async def get_user(id: UUID):
+    return {
+        "id": str(id),
+        "email": "demo@example.com",
+        "full_name": "Demo User",
+        "avatar_url": None,
+    }
+
+@app.put("/users/{id}")
+async def update_user(id: UUID, payload: UserUpdate, current_user: UserRead = Depends(get_current_user)):
+    return {
+        "id": str(id),
+        "email": current_user.email,
+        "full_name": payload.full_name or current_user.full_name,
+        "avatar_url": payload.avatar_url,
+    }
+
+@app.delete("/users/{id}", status_code=204)
+async def delete_user(id: UUID, current_user: UserRead = Depends(get_current_user)):
+    return None
+
+# ---------------- Events ----------------
+@app.get("/events")
+async def list_events(
+    q: Optional[str] = Query(None, description="Keyword in title/description"),
+    start_from: Optional[datetime] = Query(None, description="Only events starting after this time"),
+    start_to: Optional[datetime] = Query(None, description="Only events starting before this time"),
+    organizer_id: Optional[UUID] = None,
+    visibility: Optional[Literal["public", "private", "unlisted"]] = None,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(20, ge=1, le=200),
+):
+    now = datetime.now().astimezone()
+    demo_event = {
+        "id": str(uuid4()),
+        "organizer_id": str(uuid4()),
+        "title": (q or "Pizza Night"),
+        "description": "Neighborhood pizza & games",
+        "location": "123 Main St",
+        "start_at": now,
+        "end_at": now,
+        "timezone": str(now.tzinfo),
+        "all_day": False,
+        "visibility": "public",
+        "tags": ["food", "friends"],
+        "rrule": None,           # kept; see explanation below
+        "capacity": 20,
+        "reminders": [{"minutes_before_start": 30, "method": "popup"}],
+        # attendees_count optional in this basic structure
+    }
+    return {"items": [demo_event], "total": 1, "page": page, "per_page": per_page, "next_page": None}
+
+@app.get("/events/{id}")
+async def get_event(id: UUID):
+    now = datetime.now().astimezone()
+    return {
+        "id": str(id),
+        "organizer_id": str(uuid4()),
+        "title": "Board Games Night",
+        "description": "Bring your favorite game!",
+        "location": "Community Center",
+        "start_at": now,
+        "end_at": now,
+        "timezone": str(now.tzinfo),
+        "all_day": False,
+        "visibility": "public",
+        "tags": ["games"],
+        "rrule": None,
+        "capacity": None,
+        "reminders": [],
+    }
+
+@app.post("/events", status_code=201)
+async def create_event(payload: EventCreate, current_user: UserRead = Depends(get_current_user)):
+    return {
+        "id": str(uuid4()),
+        "organizer_id": str(payload.organizer_id),
+        "title": payload.title,
+        "description": payload.description,
+        "location": payload.location,
+        "start_at": payload.start_at,
+        "end_at": payload.end_at,
+        "timezone": payload.timezone,
+        "all_day": payload.all_day,
+        "visibility": payload.visibility,
+        "tags": payload.tags,
+        "rrule": payload.rrule,
+        "capacity": payload.capacity,
+        "reminders": [r.model_dump() if isinstance(r, Reminder) else r for r in payload.reminders],
+    }
+
+@app.put("/events/{id}")
+async def update_event(id: UUID, payload: EventUpdate, current_user: UserRead = Depends(get_current_user)):
+    existing = await get_event(id)  # kept; see explanation below
+    data = {**existing}
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        data[k] = v
+    return data
+
+@app.delete("/events/{id}", status_code=204)
+async def delete_event(id: UUID, current_user: UserRead = Depends(get_current_user)):
+    return None
+
+# ---------------- RSVPs ----------------
+@app.post("/events/{id}/rsvp", status_code=201)
+async def rsvp_event(id: UUID, payload: RSVPCreate, current_user: UserRead = Depends(get_current_user)):
+    return {
+        "id": str(uuid4()),
+        "event_id": str(id),
+        "user_id": str(current_user.id),
+        "status": payload.status,
+    }
+
+@app.get("/events/{id}/rsvps")
+async def list_event_rsvps(id: UUID):
+    return [
+        {"id": str(uuid4()), "event_id": str(id), "user_id": str(uuid4()), "status": "going"},
+        {"id": str(uuid4()), "event_id": str(id), "user_id": str(uuid4()), "status": "interested"},
+    ]
+
+@app.delete("/events/{id}/rsvp", status_code=204)
+async def cancel_rsvp(id: UUID, current_user: UserRead = Depends(get_current_user)):
+    return None
