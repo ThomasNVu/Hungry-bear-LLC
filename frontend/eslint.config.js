@@ -17,7 +17,7 @@ export default defineConfig([
       configPrettier,
     ],
     languageOptions: {
-      ecmaVersion: 2020,
+      ecmaVersion: 'latest',
       globals: globals.browser,
     },
   },
