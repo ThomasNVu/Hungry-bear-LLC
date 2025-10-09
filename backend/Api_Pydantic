@@ -1,53 +1,80 @@
 from __future__ import annotations
-from typing import List, Optional, Generic, TypeVar, Literal
+
+from typing import List, Optional, Literal
 from uuid import UUID
 from datetime import datetime
 
-from pydantic import BaseModel, Field, EmailStr, AnyUrl, ConfigDict, field_validator, model_validator
-from pydantic.generics import GenericModel
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
-T = TypeVar("T")
 
-class APIError(BaseModel):
-    message: str = Field(...)
-    code: str = Field(...)
+# Auth / Users
 
-class Paginated(GenericModel, Generic[T]):
-    items: List[T]
-    total: int
-    page: int = Field(1, ge=1)
-    per_page: int = Field(20, ge=1, le=200)
-    next_page: Optional[int] = None
-
-class Reminder(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    minutes_before_start: int = Field(..., ge=0, le=10080)
-    method: Literal["popup", "email"] = "popup"
-
-class Visibility(BaseModel):
-    value: Literal["public", "private", "unlisted"] = "public"
-
-class RSVPStatus(BaseModel):
-    value: Literal["going", "interested", "declined"] = "going"
+class LoginRequest(BaseModel):
+    email: str
+    password: str
 
 class UserBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    email: EmailStr
+    email: str
     full_name: Optional[str] = None
-    avatar_url: Optional[AnyUrl] = None
+    avatar_url: Optional[str] = None
 
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8)
 
 class UserRead(UserBase):
     id: UUID
+    is_active: bool = True
+    role: Literal["user", "admin"] = "user"
     created_at: datetime
     updated_at: datetime
 
 class UserUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     full_name: Optional[str] = None
-    avatar_url: Optional[AnyUrl] = None
+    avatar_url: Optional[str] = None
+
+# ---------------------------
+# Calendars & Sharing
+# ---------------------------
+
+class CalendarCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    visibility: Literal["public", "private"] = "private"
+
+class CalendarUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: Optional[str] = Field(None, min_length=1, max_length=120)
+    visibility: Optional[Literal["public", "private"]] = None
+
+class CalendarRead(BaseModel):
+    id: UUID
+    owner_user_id: UUID
+    name: str
+    visibility: Literal["public", "private"]
+    created_at: datetime
+    updated_at: datetime
+
+class CalendarShareCreate(BaseModel):
+    user_id: UUID
+    permission: Literal["view"] = "view"
+
+class CalendarShareRead(BaseModel):
+    calendar_id: UUID
+    user_id: UUID
+    permission: Literal["view"] = "view"
+
+class CalendarSubscriptionUpdate(BaseModel):
+    is_hidden: bool
+
+# ---------------------------
+# Events, Recurrence, Reminders & Event Sharing/Copy
+# ---------------------------
+
+class Reminder(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    minutes_before_start: int = Field(..., ge=0, le=10080)
+    method: Literal["popup"] = "popup"
 
 class EventBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -57,37 +84,23 @@ class EventBase(BaseModel):
     location: Optional[str] = Field(None, max_length=500)
     start_at: datetime
     end_at: datetime
-    timezone: Optional[str] = Field(None)
+    timezone: Optional[str] = Field(None, description="IANA tz like 'America/New_York'")
     all_day: bool = False
-    visibility: Literal["public", "private", "unlisted"] = "public"
-    tags: List[str] = []
+    visibility: Literal["public", "private", "busy"] = "private"
     rrule: Optional[str] = None
-    capacity: Optional[int] = Field(None, ge=1)
     reminders: List[Reminder] = []
-
-    @field_validator("title")
-    @classmethod
-    def no_blank_title(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("title cannot be blank")
-        return v.strip()
 
     @model_validator(mode="after")
     def validate_times(self) -> "EventBase":
-        if self.start_at.tzinfo is None or self.start_at.utcoffset() is None:
-            raise ValueError("start_at must be timezone-aware (include offset)")
-        if self.end_at.tzinfo is None or self.end_at.utcoffset() is None:
-            raise ValueError("end_at must be timezone-aware (include offset)")
         if self.end_at <= self.start_at:
             raise ValueError("end_at must be after start_at")
         return self
 
 class EventCreate(EventBase):
-    organizer_id: UUID
+    pass
 
 class EventUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
     title: Optional[str] = Field(None, min_length=1, max_length=200)
     description: Optional[str] = Field(None, max_length=5000)
     location: Optional[str] = Field(None, max_length=500)
@@ -95,52 +108,39 @@ class EventUpdate(BaseModel):
     end_at: Optional[datetime] = None
     timezone: Optional[str] = None
     all_day: Optional[bool] = None
-    visibility: Optional[Literal["public", "private", "unlisted"]] = None
-    tags: Optional[List[str]] = None
+    visibility: Optional[Literal["public", "private", "busy"]] = None
     rrule: Optional[str] = None
-    capacity: Optional[int] = Field(None, ge=1)
     reminders: Optional[List[Reminder]] = None
 
     @model_validator(mode="after")
     def validate_times(self) -> "EventUpdate":
-        if self.start_at and (self.start_at.tzinfo is None or self.start_at.utcoffset() is None):
-            raise ValueError("start_at must be timezone-aware (include offset)")
-        if self.end_at and (self.end_at.tzinfo is None or self.end_at.utcoffset() is None):
-            raise ValueError("end_at must be timezone-aware (include offset)")
         if self.start_at and self.end_at and self.end_at <= self.start_at:
             raise ValueError("end_at must be after start_at")
         return self
 
 class EventRead(EventBase):
     id: UUID
-    organizer_id: UUID
-    attendees_count: int = 0
+    calendar_id: UUID
+    owner_user_id: UUID
     created_at: datetime
     updated_at: datetime
 
-class RSVPCreate(BaseModel):
-    status: Literal["going", "interested", "declined"] = "going"
+class EventShareCreate(BaseModel):
+    user_id: UUID
+    permission: Literal["view"] = "view"
 
-class RSVPRead(BaseModel):
-    id: UUID
+class EventShareRead(BaseModel):
     event_id: UUID
     user_id: UUID
-    status: Literal["going", "interested", "declined"]
-    created_at: datetime
+    permission: Literal["view"] = "view"
 
-class Token(BaseModel):
-    access_token: str
-    token_type: Literal["bearer"] = "bearer"
+# ---------------------------
+# Misc / Errors / Notifications
+# ---------------------------
 
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
+class APIError(BaseModel):
+    message: str = Field(...)
+    code: str = Field(...)
 
-__all__ = [
-    "APIError", "Paginated",
-    "Reminder", "Visibility", "RSVPStatus",
-    "UserBase", "UserCreate", "UserRead", "UserUpdate",
-    "EventBase", "EventCreate", "EventUpdate", "EventRead",
-    "RSVPCreate", "RSVPRead",
-    "Token", "LoginRequest",
-]
+class BrowserPushSubscription(BaseModel):
+    endpoint: str
