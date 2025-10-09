@@ -6,8 +6,9 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 
-
+# -------
 # Auth / Users
+# -------
 
 class LoginRequest(BaseModel):
     email: str
@@ -22,6 +23,9 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8)
 
+# -------
+# 2 Roles Admin or User
+# -------
 class UserRead(UserBase):
     id: UUID
     is_active: bool = True
@@ -35,16 +39,16 @@ class UserUpdate(BaseModel):
     avatar_url: Optional[str] = None
 
 # ---------------------------
-# Calendars & Sharing
+# Calendars/Sharing
 # ---------------------------
 
 class CalendarCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=120)
+    name: str = Field(..., min_length=1, max_length=100)
     visibility: Literal["public", "private"] = "private"
 
 class CalendarUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    name: Optional[str] = Field(None, min_length=1, max_length=120)
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
     visibility: Optional[Literal["public", "private"]] = None
 
 class CalendarRead(BaseModel):
@@ -63,6 +67,10 @@ class CalendarShareRead(BaseModel):
     calendar_id: UUID
     user_id: UUID
     permission: Literal["view"] = "view"
+
+# ---------
+# Hidden Feature
+# ---------
 
 class CalendarSubscriptionUpdate(BaseModel):
     is_hidden: bool
@@ -135,7 +143,7 @@ class EventShareRead(BaseModel):
     permission: Literal["view"] = "view"
 
 # ---------------------------
-# Misc / Errors / Notifications
+# Errors / Notifications
 # ---------------------------
 
 class APIError(BaseModel):
