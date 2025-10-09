@@ -1,3 +1,12 @@
+from __future__ import annotations
+
+from typing import Optional, List, Literal, Dict, Tuple, Set
+from uuid import UUID, uuid4
+from datetime import datetime
+
+from fastapi import FastAPI, Depends, HTTPException, Query, status
+from fastapi.security import OAuth2PasswordBearer
+
 from calendar_api_pm import (
     # users/auth
     LoginRequest, UserCreate, UserRead, UserUpdate,
@@ -15,10 +24,12 @@ from calendar_api_pm import (
 app = FastAPI(title="Calendar API", version="0.1.0")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 
-# --------------------------------------------------------------------
-# IN-MEMORY STORES (demo only) — placed at module top so they persist
-# across requests while the process is running.
-# --------------------------------------------------------------------
+# ------
+#in the works
+# IN-MEMORY STORES (demo only) — this will not be perminent. the data stored will be gone once the server restarts.
+# --------
+
+
 USERS: Dict[UUID, Dict] = {}
 CALENDARS: Dict[UUID, Dict] = {}
 CALENDAR_SHARES: Set[Tuple[UUID, UUID]] = set()  # (calendar_id, user_id)
@@ -132,7 +143,7 @@ async def admin_set_role(id: UUID, role: Literal["user", "admin"], current_user:
     return {"id": str(id), "role": role}
 
 # --------------------------------------------------------------------
-# Calendars (create, visibility, share, follow/hide)
+# Calendars Features (create, visibility, share, follow/hide)
 # --------------------------------------------------------------------
 @app.post("/calendars", status_code=201)
 async def create_calendar(payload: CalendarCreate, current_user: UserRead = Depends(get_current_user)):
@@ -177,7 +188,10 @@ async def delete_calendar(calendar_id: UUID, current_user: UserRead = Depends(ge
         raise HTTPException(404, "Calendar not found")
     if cal["owner_user_id"] != current_user.id:
         raise HTTPException(403, "Only owner can delete calendar")
-    # remove events and shares for demo simplicity
+    #----- 
+    # remove events and shares for the demo 
+    #-----
+
     for eid, ev in list(EVENTS.items()):
         if ev["calendar_id"] == calendar_id:
             EVENTS.pop(eid, None)
@@ -229,9 +243,9 @@ async def unsubscribe_calendar(calendar_id: UUID, current_user: UserRead = Depen
     CALENDAR_SUBSCRIPTIONS.pop((current_user.id, calendar_id), None)
     return None
 
-# --------------------------------------------------------------------
+# -------------
 # Events (CRUD, share, copy, reminders/rrule)
-# --------------------------------------------------------------------
+# ------------
 @app.get("/calendars/{calendar_id}/events")
 async def list_events(
     calendar_id: UUID,
@@ -353,7 +367,7 @@ async def copy_event(
         raise HTTPException(404, "Event not found")
     target_cal = target_calendar_id
     if not target_cal:
-        # pick any calendar the current user owns; fallback to DEMO
+        # pick any calendar the current user owns; check the DEMO
         owned = [cid for cid, c in CALENDARS.items() if c["owner_user_id"] == current_user.id]
         target_cal = owned[0] if owned else DEMO_CALENDAR_ID
     new_id = uuid4()
@@ -367,9 +381,9 @@ async def copy_event(
     }
     return {"source_event_id": str(event_id), "new_event_id": str(new_id), "target_calendar_id": str(target_cal), "status": "copied"}
 
-# --------------------------------------------------------------------
+# -------------
 # Notifications (browser pop-up registration)
-# --------------------------------------------------------------------
+# -----------------
 @app.post("/notifications/register", status_code=201)
 async def register_browser_push(sub: BrowserPushSubscription, current_user: UserRead = Depends(get_current_user)):
     NOTIF_SUBS.setdefault(current_user.id, set()).add(sub.endpoint)
