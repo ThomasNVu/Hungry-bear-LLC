@@ -1,7 +1,10 @@
 function Navbar() {
   return (
     <nav className="bg-white border-b border-[#E0E0E0] flex flex-row justify-between px-[5%] items-center">
-      <h1 className="text-xl font-inter ">Hungry Bear LLC</h1>
+      <div className="flex flex-row items-center gap-2">
+        <img src="/logo_starter.png" className="h-10"></img>
+        <h1 className="text-xl font-inter ">Hungry Bear LLC</h1>
+      </div>
 
       <div className="flex flex-row items-center gap-10 px-4 py-2">
         <a
@@ -14,7 +17,7 @@ function Navbar() {
           <button className="">Username</button>
           <img
             className="h-[20px] w-[20px]"
-            src="./public/down-arrow.png"
+            src="/down-arrow.png"
             alt="Dropdown arrow"
           />
         </div>
