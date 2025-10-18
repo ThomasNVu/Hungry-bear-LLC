@@ -1,4 +1,3 @@
-import { useState } from "react";
 // src/components/Calendar.jsx
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
@@ -6,11 +5,13 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import { INITIAL_EVENTS, createEventId } from "../event-utils";
+import type {
+  DateSelectArg,
+  EventContentArg,
+} from "@fullcalendar/core/index.js";
 
 const Calendar = () => {
-  const [currentEvents, setCurrentEvents] = useState([]);
-
-  function handleDateSelect(selectInfo) {
+  function handleDateSelect(selectInfo: DateSelectArg) {
     let title = prompt("Please enter a new title for your event");
     let calendarApi = selectInfo.view.calendar;
 
@@ -26,8 +27,9 @@ const Calendar = () => {
       });
     }
   }
+
   return (
-    <div className="p-4">
+    <div className="p-4 w-[60%] justify-items-center m-auto">
       <FullCalendar
         plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
         headerToolbar={{
@@ -43,11 +45,18 @@ const Calendar = () => {
         initialEvents={INITIAL_EVENTS}
         select={handleDateSelect}
         eventContent={renderEventContent}
-        eventClick={handleEventClick}
-        eventsSet={handleEvents}
       />
     </div>
   );
 };
+
+function renderEventContent(eventInfo: EventContentArg) {
+  return (
+    <>
+      <b>{eventInfo.timeText}</b>
+      <i>{eventInfo.event.title}</i>
+    </>
+  );
+}
 
 export default Calendar;
