@@ -29,24 +29,31 @@ const Calendar = () => {
   }
 
   return (
-    <div className="p-4 w-[60%] justify-items-center m-auto">
-      <FullCalendar
-        plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-        headerToolbar={{
-          left: "prev,next today",
-          center: "title",
-          right: "dayGridMonth,timeGridWeek,timeGridDay",
-        }}
-        initialView="dayGridMonth"
-        editable={true}
-        selectable={true}
-        selectMirror={true}
-        dayMaxEvents={true}
-        initialEvents={INITIAL_EVENTS}
-        select={handleDateSelect}
-        eventContent={renderEventContent}
-      />
-    </div>
+    <FullCalendar
+      plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+      customButtons={{
+        shareLink: {
+          text: "Share",
+          click: function () {
+            alert("Hello World!");
+          },
+        },
+      }}
+      headerToolbar={{
+        left: "prev,next today",
+        center: "title",
+        right: "shareLink dayGridMonth,timeGridWeek,timeGridDay",
+      }}
+      initialView="dayGridMonth"
+      editable={true}
+      selectable={true}
+      selectMirror={true}
+      dayMaxEvents={true}
+      initialEvents={INITIAL_EVENTS}
+      select={handleDateSelect}
+      eventContent={renderEventContent}
+      contentHeight={"auto"}
+    />
   );
 };
 
