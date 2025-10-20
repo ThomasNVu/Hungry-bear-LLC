@@ -1,9 +1,20 @@
-import Login from "./pages/Login";  // Import the Login component
+import Navbar from "./Components/Navbar";
+import Calendar from "./Components/Calendar";
 
 function App() {
   return (
-    <div>
-      <Login />  {/* Render the Login component here */}
+    <div className="flex h-screen flex-col overflow-hidden">
+      {/* Give the navbar a fixed track height (tweak as needed) */}
+      <header className="h-16 shrink-0">
+        <Navbar />
+      </header>
+
+      {/* The calendar area gets the remaining height */}
+      <main className="flex-1 overflow-hidden">
+        <div className="w-[80%] mx-auto h-full p-6">
+          <Calendar />
+        </div>
+      </main>
     </div>
   );
 }
