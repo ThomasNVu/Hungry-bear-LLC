@@ -5,7 +5,7 @@ import Login from "./Login.tsx";
 import SignUp from "./SignUp.tsx";
 import "./index.css";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
-import PageNotFound from "./Components/PageNotFound.tsx";
+import PageNotFound from "./components/PageNotFound.tsx";
 
 const router = createBrowserRouter([
   { path: "/", element: <App /> },
