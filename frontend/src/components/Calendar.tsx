@@ -7,6 +7,7 @@ import interactionPlugin from "@fullcalendar/interaction";
 import { INITIAL_EVENTS, createEventId } from "../event-utils";
 import type {
   DateSelectArg,
+  EventClickArg,
   EventContentArg,
 } from "@fullcalendar/core/index.js";
 
@@ -25,6 +26,16 @@ const Calendar = () => {
         end: selectInfo.endStr,
         allDay: selectInfo.allDay,
       });
+    }
+  }
+
+  function handleEventClick(clickInfo: EventClickArg) {
+    if (
+      confirm(
+        `Are you sure you want to delete the event '${clickInfo.event.title}'`,
+      )
+    ) {
+      clickInfo.event.remove();
     }
   }
 
@@ -53,6 +64,7 @@ const Calendar = () => {
       select={handleDateSelect}
       eventContent={renderEventContent}
       contentHeight={"auto"}
+      eventClick={handleEventClick}
     />
   );
 };
