@@ -20,9 +20,15 @@ from calendar_api_pm import (
     # misc
     APIError, BrowserPushSubscription,
 )
+from supabase import create_client, Client
+
+SUPABASE_URL="https://qeapgivkqgadofeqdjjn.supabase.co/"
+#need another link from supabase vv
+SUPABASE_KEY="[anon key]" 
 
 app = FastAPI(title="Calendar API", version="0.1.0")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+sb: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ------
 #in the works
