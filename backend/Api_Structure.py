@@ -10,7 +10,7 @@ from fastapi.security import OAuth2PasswordBearer
 from calendar_api_pm import (
     # users/auth
     LoginRequest, UserCreate, UserRead, UserUpdate,
-    # calendars
+    # calendar 
     CalendarCreate, CalendarUpdate, CalendarRead,
     CalendarShareCreate, CalendarShareRead,
     CalendarSubscriptionUpdate,
