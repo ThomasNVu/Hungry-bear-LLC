@@ -47,8 +47,8 @@ NOTIF_SUBS: Dict[UUID, Set[str]] = {}
 DEMO_USER_ID: UUID = uuid4()
 DEMO_CALENDAR_ID: UUID = uuid4()
 
-def _now():
-    return datetime.now().astimezone()
+def time_stamp() -> str:
+    return datetime.now().astimezone().isoformat()
 
 def _bootstrap_demo():
     if DEMO_USER_ID not in USERS:
