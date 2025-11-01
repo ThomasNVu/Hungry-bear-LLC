@@ -1,22 +1,30 @@
-// src/components/Calendar.jsx
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
-// optional extras:
-import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import { INITIAL_EVENTS, createEventId } from "../event-utils";
 import type {
   DateSelectArg,
   EventClickArg,
   EventContentArg,
-} from "@fullcalendar/core/index.js";
+  EventApi,
+  DatesSetArg,
+} from "@fullcalendar/core";
 
-const Calendar = () => {
+type Props = {
+  onEventsChange?: (events: EventApi[]) => void;
+  onMonthChange?: (date: Date) => void;
+};
+
+export default function CalendarLarge({
+  onEventsChange,
+  onMonthChange,
+}: Props) {
   function handleDateSelect(selectInfo: DateSelectArg) {
-    const title = prompt("Please enter a new title for your event");
+    const title =
+      window.prompt("Please enter a new title for your event")?.trim() ?? "";
     const calendarApi = selectInfo.view.calendar;
 
-    calendarApi.unselect(); // clear date selection
+    calendarApi.unselect();
 
     if (title) {
       calendarApi.addEvent({
@@ -30,52 +38,49 @@ const Calendar = () => {
   }
 
   function handleEventClick(clickInfo: EventClickArg) {
-    if (
-      confirm(
-        `Are you sure you want to delete the event '${clickInfo.event.title}'`,
-      )
-    ) {
+    if (window.confirm(`Delete '${clickInfo.event.title}'?`)) {
       clickInfo.event.remove();
     }
   }
 
+  // function handleEvents(events : ) {
+  //   setCurrentEvents(events);
+  // }
+
+  function renderEventContent(eventInfo: EventContentArg) {
+    return (
+      <>
+        {eventInfo.timeText && <b className="mr-1">{eventInfo.timeText}</b>}
+        <span>{eventInfo.event.title}</span>
+      </>
+    );
+  }
+
   return (
     <FullCalendar
-      plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+      plugins={[dayGridPlugin, interactionPlugin]}
+      initialView="dayGridMonth"
+      headerToolbar={{ left: "title", right: "prev,next today shareLink" }}
       customButtons={{
         shareLink: {
           text: "Share",
-          click: function () {
-            alert("Hello World!");
-          },
+          click: () => window.alert("Hello World!"),
         },
       }}
-      headerToolbar={{
-        left: "prev,next today",
-        center: "title",
-        right: "shareLink dayGridMonth,timeGridWeek,timeGridDay",
-      }}
-      initialView="dayGridMonth"
+      height="100%"
+      expandRows={true}
       editable={true}
       selectable={true}
       selectMirror={true}
       dayMaxEvents={true}
+      dayMaxEventRows={true}
       initialEvents={INITIAL_EVENTS}
       select={handleDateSelect}
-      eventContent={renderEventContent}
-      contentHeight={"auto"}
       eventClick={handleEventClick}
+      eventContent={renderEventContent}
+      // NEW: bubble up events and month changes
+      eventsSet={(events) => onEventsChange?.(events)}
+      datesSet={(arg: DatesSetArg) => onMonthChange?.(arg.start)}
     />
   );
-};
-
-function renderEventContent(eventInfo: EventContentArg) {
-  return (
-    <>
-      <b>{eventInfo.timeText}</b>
-      <i>{eventInfo.event.title}</i>
-    </>
-  );
 }
-
-export default Calendar;
