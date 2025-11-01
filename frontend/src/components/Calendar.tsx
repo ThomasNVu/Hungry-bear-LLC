@@ -1,4 +1,3 @@
-// src/components/Calendar.jsx
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
@@ -44,6 +43,19 @@ export default function CalendarLarge({
     }
   }
 
+  // function handleEvents(events : ) {
+  //   setCurrentEvents(events);
+  // }
+
+  function renderEventContent(eventInfo: EventContentArg) {
+    return (
+      <>
+        {eventInfo.timeText && <b className="mr-1">{eventInfo.timeText}</b>}
+        <span>{eventInfo.event.title}</span>
+      </>
+    );
+  }
+
   return (
     <FullCalendar
       plugins={[dayGridPlugin, interactionPlugin]}
@@ -52,9 +64,7 @@ export default function CalendarLarge({
       customButtons={{
         shareLink: {
           text: "Share",
-          click: function () {
-            alert("Hello World!");
-          },
+          click: () => window.alert("Hello World!"),
         },
       }}
       height="100%"
@@ -63,22 +73,14 @@ export default function CalendarLarge({
       selectable={true}
       selectMirror={true}
       dayMaxEvents={true}
+      dayMaxEventRows={true}
       initialEvents={INITIAL_EVENTS}
       select={handleDateSelect}
-      eventContent={renderEventContent}
-      contentHeight={"auto"}
       eventClick={handleEventClick}
+      eventContent={renderEventContent}
+      // NEW: bubble up events and month changes
+      eventsSet={(events) => onEventsChange?.(events)}
+      datesSet={(arg: DatesSetArg) => onMonthChange?.(arg.start)}
     />
   );
-};
-
-function renderEventContent(eventInfo: EventContentArg) {
-  return (
-    <>
-      <b>{eventInfo.timeText}</b>
-      <i>{eventInfo.event.title}</i>
-    </>
-  );
 }
-
-export default Calendar;
