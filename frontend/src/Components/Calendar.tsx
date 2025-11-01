@@ -46,7 +46,9 @@ export default function CalendarLarge({
 
   return (
     <FullCalendar
-      plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+      plugins={[dayGridPlugin, interactionPlugin]}
+      initialView="dayGridMonth"
+      headerToolbar={{ left: "title", right: "prev,next today shareLink" }}
       customButtons={{
         shareLink: {
           text: "Share",
