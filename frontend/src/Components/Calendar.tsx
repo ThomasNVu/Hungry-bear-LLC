@@ -11,12 +11,21 @@ import type {
   DatesSetArg,
 } from "@fullcalendar/core";
 
-const Calendar = () => {
+type Props = {
+  onEventsChange?: (events: EventApi[]) => void;
+  onMonthChange?: (date: Date) => void;
+};
+
+export default function CalendarLarge({
+  onEventsChange,
+  onMonthChange,
+}: Props) {
   function handleDateSelect(selectInfo: DateSelectArg) {
-    const title = prompt("Please enter a new title for your event");
+    const title =
+      window.prompt("Please enter a new title for your event")?.trim() ?? "";
     const calendarApi = selectInfo.view.calendar;
 
-    calendarApi.unselect(); // clear date selection
+    calendarApi.unselect();
 
     if (title) {
       calendarApi.addEvent({
