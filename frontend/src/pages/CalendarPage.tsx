@@ -1,6 +1,6 @@
 import React from "react";
 // import MiniCalendar from "../components/MiniCalendar";
-import CalendarLarge from "../components/Calendar";
+import Calendar from "../components/Calendar";
 import TaskList from "../components/tasklist";
 import type { EventApi } from "@fullcalendar/core";
 
@@ -11,7 +11,7 @@ export default function CalendarPage() {
   return (
     <div className="grid grid-cols-[15%_60%] grid-rows-5 gap-y-6 gap-x-8 h-screen p-4">
       <div className="col-start-2 col-end-6 row-start-1 row-end-6 bg-red-300 p-4">
-        <CalendarLarge
+        <Calendar
           onEventsChange={(event) => setEvents(event)}
           onMonthChange={(date) => setCurrentDate(date)}
         />

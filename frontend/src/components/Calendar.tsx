@@ -15,10 +15,7 @@ type Props = {
   onMonthChange?: (date: Date) => void;
 };
 
-export default function CalendarLarge({
-  onEventsChange,
-  onMonthChange,
-}: Props) {
+export default function Calendar({ onEventsChange, onMonthChange }: Props) {
   function handleDateSelect(selectInfo: DateSelectArg) {
     const title =
       window.prompt("Please enter a new title for your event")?.trim() ?? "";
