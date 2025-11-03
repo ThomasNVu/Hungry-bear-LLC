@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine, async_sessionmaker, AsyncSession
 )
 from sqlalchemy.orm import DeclarativeBase
+#from Api_Structure import create_user
 
 
 # --- Load .env from project root ---
@@ -128,3 +129,4 @@ async def get_session() -> AsyncSession:
     async with SessionLocal() as session:
         yield session
 """
+

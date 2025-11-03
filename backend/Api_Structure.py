@@ -1,377 +1,611 @@
 from __future__ import annotations
 
-from typing import Optional, Literal, Dict, List
+from typing import Optional, List, Literal, Dict, Tuple, Set
 from uuid import UUID, uuid4
 from datetime import datetime
-import base64
-import json
 
 from fastapi import FastAPI, Depends, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordBearer
 
-from Api_Pydantic import (
+# NEW: SQLAlchemy imports for queries + session typing
+from sqlalchemy import select, update, delete
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from .Api_Pydantic import (
+    # users/auth
     LoginRequest, UserCreate, UserRead, UserUpdate,
-    CalendarCreate, CalendarUpdate,
-    CalendarShareCreate,
+    # calendars
+    CalendarCreate, CalendarUpdate, CalendarRead,
+    CalendarShareCreate, CalendarShareRead,
     CalendarSubscriptionUpdate,
-    Reminder, EventCreate, EventUpdate,
-    EventShareCreate,
+    # events
+    Reminder, EventCreate, EventUpdate, EventRead,
+    EventShareCreate, EventShareRead,
+    # misc
     APIError, BrowserPushSubscription,
 )
 
-# ------
-# Supabase setup 
-# --------
-from supabase import create_client, Client
+# NEW: DB engine/session and ORM models
+from .db import lifespan, get_session
+from .models import User, Calendar, CalendarShare, CalendarSubscription, Event, EventShare
 
-DB_URL = "https://qeapgivkqgadofeqdjjn.supabase.co/"
-DB_KEY = "[anon key]"  # Supabase anon key is necessary
-
-sb: Client = create_client(DB_URL, DB_KEY)
-
-# -------------------------
-# FastAPI app & authentication 
-# ----------
-app = FastAPI(title="Calendar API", version="0.1.0")
+# CHANGE: add lifespan=lifespan so the DB engine/session lifecycle is managed
+app = FastAPI(title="Calendar API", version="0.1.0", lifespan=lifespan)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 
-
-def time_stamp() -> str:
-    return datetime.now().astimezone().isoformat()
-
-
+# ------
+#in the works
+# IN-MEMORY STORES (demo only) — this will not be perminent. the data stored will be gone once the server restarts.
 # --------
-# Token helpers
-# -------------------------
-def encode_token(user_id: str) -> str:
-    payload = {"user_id": user_id}
-    raw = json.dumps(payload).encode("utf-8")
-    return base64.b64encode(raw).decode("utf-8")
 
+"""
+USERS: Dict[UUID, Dict] = {}
+CALENDARS: Dict[UUID, Dict] = {}
+CALENDAR_SHARES: Set[Tuple[UUID, UUID]] = set()  # (calendar_id, user_id)
+CALENDAR_SUBSCRIPTIONS: Dict[Tuple[UUID, UUID], Dict] = {}  # (subscriber_id, calendar_id) -> {"is_hidden": bool}
+EVENTS: Dict[UUID, Dict] = {}
+EVENT_SHARES: Set[Tuple[UUID, UUID]] = set()  # (event_id, user_id)
+NOTIF_SUBS: Dict[UUID, Set[str]] = {}
 
-def decode_token(token: str) -> str:
-    try:
-        raw = base64.b64decode(token.encode("utf-8")).decode("utf-8")
-        payload = json.loads(raw)
-        user_id = payload["user_id"]
-        if not user_id:
-            raise ValueError("no user_id")
-        return user_id
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid or malformed token")
+DEMO_USER_ID: UUID = uuid4()
+DEMO_CALENDAR_ID: UUID = uuid4()
+"""
+def _now():
+    return datetime.now().astimezone()
 
+"""
+def _bootstrap_demo():
+    if DEMO_USER_ID not in USERS:
+        USERS[DEMO_USER_ID] = {
+            "id": DEMO_USER_ID,
+            "email": "demo@example.com",
+            "full_name": "Demo User",
+            "avatar_url": None,
+            "is_active": True,
+            "role": "user",
+            "created_at": _now(),
+            "updated_at": _now(),
+        }
+    if DEMO_CALENDAR_ID not in CALENDARS:
+        CALENDARS[DEMO_CALENDAR_ID] = {
+            "id": DEMO_CALENDAR_ID,
+            "owner_user_id": DEMO_USER_ID,
+            "name": "My Calendar",
+            "visibility": "private",
+            "created_at": _now(),
+            "updated_at": _now(),
+        }
+"""
 
+# --- DB-backed helpers (replace the old in-memory demo bits) ---
+from uuid import UUID  
+
+def _now():
+    # keep helper consistent with existing code
+    return datetime.now().astimezone()
+
+DEMO_EMAIL = "demo@example.com"
+
+async def ensure_demo_user(session: AsyncSession) -> "User":
+    result = await session.execute(select(User).where(User.email == DEMO_EMAIL))
+    user = result.scalar_one_or_none()
+    if user:
+        return user
+    user = User(
+        email=DEMO_EMAIL,
+        full_name="Demo User",
+        role="user",
+        is_active=True,
+    )
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    return user
+
+async def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    session: AsyncSession = Depends(get_session),
+) -> UserRead:
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing token",
+        )
+    user = await ensure_demo_user(session)
+    return UserRead(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        avatar_url=user.avatar_url,
+        is_active=user.is_active,
+        role=user.role,
+        created_at=user.created_at,
+        updated_at=user.updated_at,
+    )
+
+# --------------------------------------------------------------------
+# Auth helpers
+# --------------------------------------------------------------------
+"""
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserRead:
     if not token:
-        raise HTTPException(status_code=401, detail="Missing auth token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
+    _bootstrap_demo()
+    user = USERS.get(DEMO_USER_ID)
+    return UserRead(**user)  # type: ignore[arg-type]
+"""
 
-    user_id = decode_token(token)
+async def get_current_user(token: str = Depends(oauth2_scheme),
+                           session: AsyncSession = Depends(get_session)) -> UserRead:
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
+    user = await ensure_demo_user(session)
+    return UserRead(
+        id=user.id, email=user.email, full_name=user.full_name, avatar_url=user.avatar_url,
+        is_active=user.is_active, role=user.role, created_at=user.created_at, updated_at=user.updated_at
+    )
 
-    resp = sb.table("users").select("*").eq("id", user_id).single().execute()
-    user_row = resp.data
-    if user_row is None:
-        raise HTTPException(status_code=401, detail="User not found or inactive")
-
-    try:
-        return UserRead(**user_row)
-    except Exception:
-        raise HTTPException(500, "User row in DB does not match expected schema")
-
-
-# -------
-# Logins
-# --------
+# --------------------------------------------------------------------
+# Auth (login/logout)
+# --------------------------------------------------------------------
 @app.post("/login")
 async def login(payload: LoginRequest):
-    # Look up user by email
-    resp = sb.table("users").select("*").eq("email", payload.email).single().execute()
-    user_row = resp.data
-    if user_row is None:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-
-    # stretch goal: verify password once you store hashes 
-
-    token_b64 = encode_token(user_row["id"])
-    return {"access_token": token_b64, "token_type": "bearer"}
-
+    if payload.email and payload.password:
+        return {"access_token": "demo-token", "token_type": "bearer"}
+    raise HTTPException(status_code=401, detail="Invalid credentials")
 
 @app.post("/logout", status_code=204)
 async def logout(current_user: UserRead = Depends(get_current_user)):
     return None
 
-
-# -------
-# Users
-# ----------
+# --------------------------------------------------------------------
+# Users (basic + admin stubs)
+# --------------------------------------------------------------------
 @app.post("/users", status_code=201)
+async def create_user(payload: UserCreate, session: AsyncSession = Depends(get_session)):
+    exists = (await session.execute(select(User).where(User.email == payload.email))).scalar_one_or_none()
+    if exists:
+        raise HTTPException(409, "Email already exists")
+    user = User(email=payload.email, full_name=payload.full_name, avatar_url=payload.avatar_url)
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    return UserRead(
+        id=user.id, email=user.email, full_name=user.full_name, avatar_url=user.avatar_url,
+        is_active=user.is_active, role=user.role, created_at=user.created_at, updated_at=user.updated_at
+    )
+"""
 async def create_user(payload: UserCreate):
-    user_id = str(uuid4())
-    now = time_stamp()
-
-    insert_row = {
+    user_id = uuid4()
+    USERS[user_id] = {
         "id": user_id,
         "email": payload.email,
         "full_name": payload.full_name,
         "avatar_url": payload.avatar_url,
         "is_active": True,
         "role": "user",
-        "created_at": now,
-        "updated_at": now,
-        # TODO: save password hash in production
+        "created_at": _now(),
+        "updated_at": _now(),
     }
-
-    resp = sb.table("users").insert(insert_row).execute()
-    return resp.data[0]
-
+    return USERS[user_id]
+"""
 
 @app.get("/users/{id}")
-async def get_user(id: UUID, current_user: UserRead = Depends(get_current_user)):
-    resp = sb.table("users").select("*").eq("id", str(id)).single().execute()
-    if resp.data is None:
+async def get_user(id: UUID, session: AsyncSession = Depends(get_session), current_user: UserRead = Depends(get_current_user)):
+    user = (await session.execute(select(User).where(User.id == id))).scalar_one_or_none()
+    if not user:
         raise HTTPException(404, "User not found")
-    return resp.data
-
+    return {
+        "id": user.id, "email": user.email, "full_name": user.full_name, "avatar_url": user.avatar_url,
+        "is_active": user.is_active, "role": user.role, "created_at": user.created_at, "updated_at": user.updated_at
+    }
+"""
+async def get_user(id: UUID, current_user: UserRead = Depends(get_current_user)):
+    user = USERS.get(id)
+    if not user:
+        raise HTTPException(404, "User not found")
+    return user
+"""
 
 @app.put("/users/{id}")
-async def update_user(id: UUID, payload: UserUpdate, current_user: UserRead = Depends(get_current_user)):
-    if str(current_user.id) != str(id) and current_user.role != "admin":
-        raise HTTPException(403, "Not allowed to update this user")
-
-    update_data = payload.model_dump(exclude_unset=True)
-    update_data["updated_at"] = time_stamp()
-
-    resp = sb.table("users").update(update_data).eq("id", str(id)).execute()
-
-    if not resp.data:
+async def update_user(id: UUID, payload: UserUpdate, session: AsyncSession = Depends(get_session),
+                      current_user: UserRead = Depends(get_current_user)):
+    user = (await session.execute(select(User).where(User.id == id))).scalar_one_or_none()
+    if not user:
         raise HTTPException(404, "User not found")
-
-    return resp.data[0]
-
+    data = payload.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        setattr(user, k, v)
+    await session.commit()
+    await session.refresh(user)
+    return {
+        "id": user.id, "email": user.email, "full_name": user.full_name, "avatar_url": user.avatar_url,
+        "is_active": user.is_active, "role": user.role, "created_at": user.created_at, "updated_at": user.updated_at
+    }
+"""
+async def update_user(id: UUID, payload: UserUpdate, current_user: UserRead = Depends(get_current_user)):
+    user = USERS.get(id)
+    if not user:
+        raise HTTPException(404, "User not found")
+    data = payload.model_dump(exclude_unset=True)
+    user.update(data)
+    user["updated_at"] = _now()
+    return user
+"""
 
 @app.put("/admin/users/{id}/deactivate")
-async def admin_deactivate_user(id: UUID, current_user: UserRead = Depends(get_current_user)):
-    if current_user.role != "admin":
-        raise HTTPException(403, "Admin only")
-
-    resp = (
-        sb.table("users")
-        .update({"is_active": False, "updated_at": time_stamp()})
-        .eq("id", str(id))
-        .execute()
-    )
-
-    if not resp.data:
+async def admin_deactivate_user(
+    id: UUID,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserRead = Depends(get_current_user),
+):
+    user = (await session.execute(select(User).where(User.id == id))).scalar_one_or_none()
+    if not user:
         raise HTTPException(404, "User not found")
-
+    user.is_active = False
+    await session.commit()
     return {"id": str(id), "is_active": False}
 
-
 @app.put("/admin/users/{id}/role")
-async def admin_set_role(id: UUID, role: Literal["user", "admin"], current_user: UserRead = Depends(get_current_user)):
-    if current_user.role != "admin":
-        raise HTTPException(403, "Admin only")
-
-    resp = (
-        sb.table("users")
-        .update({"role": role, "updated_at": time_stamp()})
-        .eq("id", str(id))
-        .execute()
-    )
-
-    if not resp.data:
+async def admin_set_role(
+    id: UUID,
+    role: Literal["user", "admin"],
+    session: AsyncSession = Depends(get_session),
+    current_user: UserRead = Depends(get_current_user),
+):
+    user = (await session.execute(select(User).where(User.id == id))).scalar_one_or_none()
+    if not user:
         raise HTTPException(404, "User not found")
-
+    user.role = role
+    await session.commit()
     return {"id": str(id), "role": role}
-
-
-# -------------------------
-# Calendars
-# -------------------------
+# --------------------------------------------------------------------
+# Calendars Features (create, visibility, share, follow/hide)
+# --------------------------------------------------------------------
 @app.post("/calendars", status_code=201)
+async def create_calendar(payload: CalendarCreate, session: AsyncSession = Depends(get_session),
+                          current_user: UserRead = Depends(get_current_user)):
+    cal = Calendar(owner_user_id=current_user.id, name=payload.name, visibility=payload.visibility)
+    session.add(cal)
+    await session.commit()
+    await session.refresh(cal)
+    return {
+        "id": cal.id, "owner_user_id": cal.owner_user_id, "name": cal.name, "visibility": cal.visibility,
+        "created_at": cal.created_at, "updated_at": cal.updated_at
+    }
+"""
 async def create_calendar(payload: CalendarCreate, current_user: UserRead = Depends(get_current_user)):
-    cal_id = str(uuid4())
-    now = time_stamp()
-
-    insert_row = {
+    cal_id = uuid4()
+    CALENDARS[cal_id] = {
         "id": cal_id,
-        "owner_user_id": str(current_user.id),
+        "owner_user_id": current_user.id,
         "name": payload.name,
         "visibility": payload.visibility,
-        "created_at": now,
-        "updated_at": now,
+        "created_at": _now(),
+        "updated_at": _now(),
+    }
+    return CALENDARS[cal_id]
+"""
+@app.get("/calendars/{calendar_id}")
+async def get_calendar(calendar_id: UUID, session: AsyncSession = Depends(get_session),
+                       current_user: UserRead = Depends(get_current_user)):
+    cal = (await session.execute(select(Calendar).where(Calendar.id == calendar_id))).scalar_one_or_none()
+    if not cal:
+        raise HTTPException(404, "Calendar not found")
+    is_owner = cal.owner_user_id == current_user.id
+    is_public = cal.visibility == "public"
+    is_shared = (
+        await session.execute(
+            select(CalendarShare).where(
+                CalendarShare.calendar_id == calendar_id,
+                CalendarShare.user_id == current_user.id
+            )
+        )
+    ).scalar_one_or_none() is not None
+    if not (is_owner or is_public or is_shared):
+        raise HTTPException(403, "Not allowed to view this calendar")
+    return {
+        "id": cal.id, "owner_user_id": cal.owner_user_id, "name": cal.name, "visibility": cal.visibility,
+        "created_at": cal.created_at, "updated_at": cal.updated_at
+    }
+"""
+async def get_calendar(calendar_id: UUID, current_user: UserRead = Depends(get_current_user)):
+    cal = CALENDARS.get(calendar_id)
+    if not cal:
+        raise HTTPException(404, "Calendar not found")
+    is_owner = cal["owner_user_id"] == current_user.id
+    is_public = cal["visibility"] == "public"
+    is_shared = (calendar_id, current_user.id) in CALENDAR_SHARES
+    if not (is_owner or is_public or is_shared):
+        raise HTTPException(403, "Not allowed to view this calendar")
+    return cal
+"""
+    
+"""
+@app.patch("/calendars/{calendar_id}")
+async def update_calendar(calendar_id: UUID, payload: CalendarUpdate, current_user: UserRead = Depends(get_current_user)):
+    cal = CALENDARS.get(calendar_id)
+    if not cal:
+        raise HTTPException(404, "Calendar not found")
+    if cal["owner_user_id"] != current_user.id:
+        raise HTTPException(403, "Only owner can update calendar")
+    cal.update(payload.model_dump(exclude_unset=True))
+    cal["updated_at"] = _now()
+    return cal
+    
+"""
+@app.patch("/calendars/{calendar_id}")
+async def update_calendar(
+    calendar_id: UUID,
+    payload: CalendarUpdate,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserRead = Depends(get_current_user),
+):
+    cal = (await session.execute(select(Calendar).where(Calendar.id == calendar_id))).scalar_one_or_none()
+    if not cal:
+        raise HTTPException(404, "Calendar not found")
+    if cal.owner_user_id != current_user.id:
+        raise HTTPException(403, "Only owner can update calendar")
+
+    data = payload.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        setattr(cal, k, v)
+    await session.commit()
+    await session.refresh(cal)
+    return {
+        "id": cal.id, "owner_user_id": cal.owner_user_id, "name": cal.name, "visibility": cal.visibility,
+        "created_at": cal.created_at, "updated_at": cal.updated_at
     }
 
-    resp = sb.table("calendars").insert(insert_row).execute()
-    return resp.data[0]
+@app.delete("/calendars/{calendar_id}", status_code=204)
+async def delete_calendar(
+    calendar_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserRead = Depends(get_current_user),
+):
+    cal = (await session.execute(select(Calendar).where(Calendar.id == calendar_id))).scalar_one_or_none()
+    if not cal:
+        raise HTTPException(404, "Calendar not found")
+    if cal.owner_user_id != current_user.id:
+        raise HTTPException(403, "Only owner can delete calendar")
 
+    await session.delete(cal)
+    await session.commit()
+    return None
 
-@app.get("/calendars/{calendar_id}")
-async def get_calendar(calendar_id: UUID, current_user: UserRead = Depends(get_current_user)):
-    cal_resp = sb.table("calendars").select("*").eq("id", str(calendar_id)).single().execute()
-    cal = cal_resp.data
-    if cal is None:
+"""
+@app.delete("/calendars/{calendar_id}", status_code=204)
+async def delete_calendar(calendar_id: UUID, current_user: UserRead = Depends(get_current_user)):
+    cal = CALENDARS.get(calendar_id)
+    if not cal:
+        raise HTTPException(404, "Calendar not found")
+    if cal["owner_user_id"] != current_user.id:
+        raise HTTPException(403, "Only owner can delete calendar")
+    #----- 
+    # remove events and shares for the demo 
+    #-----
+
+    for eid, ev in list(EVENTS.items()):
+        if ev["calendar_id"] == calendar_id:
+            EVENTS.pop(eid, None)
+    for key in list(CALENDAR_SUBSCRIPTIONS.keys()):
+        if key[1] == calendar_id:
+            CALENDAR_SUBSCRIPTIONS.pop(key, None)
+    for key in list(CALENDAR_SHARES):
+        if key[0] == calendar_id:
+            CALENDAR_SHARES.discard(key)
+    CALENDARS.pop(calendar_id, None)
+    return None
+"""
+@app.post("/calendars/{calendar_id}/share", status_code=201)
+async def share_calendar(
+    calendar_id: UUID,
+    payload: CalendarShareCreate,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserRead = Depends(get_current_user),
+):
+    cal = (await session.execute(select(Calendar).where(Calendar.id == calendar_id))).scalar_one_or_none()
+    if not cal:
+        raise HTTPException(404, "Calendar not found")
+    if cal.owner_user_id != current_user.id:
+        raise HTTPException(403, "Only owner can share calendar")
+
+    exists = (await session.execute(
+        select(CalendarShare).where(
+            CalendarShare.calendar_id == calendar_id,
+            CalendarShare.user_id == payload.user_id
+        )
+    )).scalar_one_or_none()
+    if not exists:
+        session.add(CalendarShare(calendar_id=calendar_id, user_id=payload.user_id))
+        await session.commit()
+    return {"calendar_id": str(calendar_id), "user_id": str(payload.user_id), "permission": "view"}
+
+"""
+@app.post("/calendars/{calendar_id}/share", status_code=201)
+async def share_calendar(calendar_id: UUID, payload: CalendarShareCreate, current_user: UserRead = Depends(get_current_user)):
+    cal = CALENDARS.get(calendar_id)
+    if not cal:
+        raise HTTPException(404, "Calendar not found")
+    if cal["owner_user_id"] != current_user.id:
+        raise HTTPException(403, "Only owner can share calendar")
+    CALENDAR_SHARES.add((calendar_id, payload.user_id))
+    return {"calendar_id": str(calendar_id), "user_id": str(payload.user_id), "permission": "view"}
+"""
+@app.delete("/calendars/{calendar_id}/share/{user_id}", status_code=204)
+async def unshare_calendar(
+    calendar_id: UUID,
+    user_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserRead = Depends(get_current_user),
+):
+    cal = (await session.execute(select(Calendar).where(Calendar.id == calendar_id))).scalar_one_or_none()
+    if not cal:
+        raise HTTPException(404, "Calendar not found")
+    if cal.owner_user_id != current_user.id:
+        raise HTTPException(403, "Only owner can unshare calendar")
+
+    row = (await session.execute(
+        select(CalendarShare).where(
+            CalendarShare.calendar_id == calendar_id,
+            CalendarShare.user_id == user_id
+        )
+    )).scalar_one_or_none()
+    if row:
+        await session.delete(row)
+        await session.commit()
+    return None
+
+"""
+@app.delete("/calendars/{calendar_id}/share/{user_id}", status_code=204)
+async def unshare_calendar(calendar_id: UUID, user_id: UUID, current_user: UserRead = Depends(get_current_user)):
+    cal = CALENDARS.get(calendar_id)
+    if not cal:
+        raise HTTPException(404, "Calendar not found")
+    if cal["owner_user_id"] != current_user.id:
+        raise HTTPException(403, "Only owner can unshare calendar")
+    CALENDAR_SHARES.discard((calendar_id, user_id))
+    return None
+"""
+@app.post("/calendars/{calendar_id}/subscribe", status_code=201)
+async def subscribe_calendar(
+    calendar_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserRead = Depends(get_current_user),
+):
+    cal = (await session.execute(select(Calendar).where(Calendar.id == calendar_id))).scalar_one_or_none()
+    if not cal:
         raise HTTPException(404, "Calendar not found")
 
-    is_owner = cal["owner_user_id"] == str(current_user.id)
-    is_public = cal["visibility"] == "public"
+    existing = (await session.execute(
+        select(CalendarSubscription).where(
+            CalendarSubscription.subscriber_user_id == current_user.id,
+            CalendarSubscription.calendar_id == calendar_id
+        )
+    )).scalar_one_or_none()
+    if not existing:
+        session.add(CalendarSubscription(subscriber_user_id=current_user.id, calendar_id=calendar_id, is_hidden=False))
+        await session.commit()
+    return {"calendar_id": str(calendar_id), "subscriber_user_id": str(current_user.id), "is_hidden": False}
 
-    share_resp = (
-        sb.table("calendar_shares")
-        .select("calendar_id,user_id")
-        .eq("calendar_id", str(calendar_id))
-        .eq("user_id", str(current_user.id))
-        .execute()
-    )
-    is_shared = len(share_resp.data or []) > 0
+"""@app.post("/calendars/{calendar_id}/subscribe", status_code=201)
+async def subscribe_calendar(calendar_id: UUID, current_user: UserRead = Depends(get_current_user)):
+    if calendar_id not in CALENDARS:
+        raise HTTPException(404, "Calendar not found")
+    CALENDAR_SUBSCRIPTIONS[(current_user.id, calendar_id)] = {"is_hidden": False}
+    return {"calendar_id": str(calendar_id), "subscriber_user_id": str(current_user.id), "is_hidden": False}
+"""
+@app.patch("/calendars/{calendar_id}/subscription")
+async def update_subscription(
+    calendar_id: UUID,
+    payload: CalendarSubscriptionUpdate,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserRead = Depends(get_current_user),
+):
+    sub = (await session.execute(
+        select(CalendarSubscription).where(
+            CalendarSubscription.subscriber_user_id == current_user.id,
+            CalendarSubscription.calendar_id == calendar_id
+        )
+    )).scalar_one_or_none()
+    if not sub:
+        raise HTTPException(404, "Subscription not found")
+    sub.is_hidden = payload.is_hidden
+    await session.commit()
+    return {"calendar_id": str(calendar_id), "subscriber_user_id": str(current_user.id), "is_hidden": payload.is_hidden}
 
+"""
+@app.patch("/calendars/{calendar_id}/subscription")
+async def update_subscription(calendar_id: UUID, payload: CalendarSubscriptionUpdate, current_user: UserRead = Depends(get_current_user)):
+    if calendar_id not in CALENDARS:
+        raise HTTPException(404, "Calendar not found")
+    CALENDAR_SUBSCRIPTIONS[(current_user.id, calendar_id)] = {"is_hidden": payload.is_hidden}
+    return {"calendar_id": str(calendar_id), "subscriber_user_id": str(current_user.id), "is_hidden": payload.is_hidden}
+"""
+
+@app.delete("/calendars/{calendar_id}/subscription", status_code=204)
+async def unsubscribe_calendar(
+    calendar_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserRead = Depends(get_current_user),
+):
+    sub = (await session.execute(
+        select(CalendarSubscription).where(
+            CalendarSubscription.subscriber_user_id == current_user.id,
+            CalendarSubscription.calendar_id == calendar_id
+        )
+    )).scalar_one_or_none()
+    if sub:
+        await session.delete(sub)
+        await session.commit()
+    return None
+"""
+@app.delete("/calendars/{calendar_id}/subscription", status_code=204)
+async def unsubscribe_calendar(calendar_id: UUID, current_user: UserRead = Depends(get_current_user)):
+    CALENDAR_SUBSCRIPTIONS.pop((current_user.id, calendar_id), None)
+    return None
+"""
+# -------------
+# Events (CRUD, share, copy, reminders/rrule)
+# ------------
+
+@app.get("/calendars/{calendar_id}/events")
+async def list_events(
+    calendar_id: UUID,
+    q: Optional[str] = Query(None),
+    start_from: Optional[datetime] = None,
+    start_to: Optional[datetime] = None,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserRead = Depends(get_current_user),
+):
+    cal = (await session.execute(select(Calendar).where(Calendar.id == calendar_id))).scalar_one_or_none()
+    if not cal:
+        raise HTTPException(404, "Calendar not found")
+
+    # permission: owner, public, or shared
+    is_owner = cal.owner_user_id == current_user.id
+    is_public = cal.visibility == "public"
+    is_shared = (await session.execute(
+        select(CalendarShare).where(
+            CalendarShare.calendar_id == calendar_id,
+            CalendarShare.user_id == current_user.id
+        )
+    )).scalar_one_or_none() is not None
     if not (is_owner or is_public or is_shared):
         raise HTTPException(403, "Not allowed to view this calendar")
 
-    return cal
+    stmt = select(Event).where(Event.calendar_id == calendar_id)
+    if start_from:
+        stmt = stmt.where(Event.start_at >= start_from)
+    if start_to:
+        stmt = stmt.where(Event.start_at <= start_to)
+    if q:
+        # simple icontains on title/description
+        ilike = f"%{q}%"
+        from sqlalchemy import or_
+        stmt = stmt.where(or_(Event.title.ilike(ilike), Event.description.ilike(ilike)))
 
-
-@app.patch("/calendars/{calendar_id}")
-async def update_calendar(calendar_id: UUID, payload: CalendarUpdate, current_user: UserRead = Depends(get_current_user)):
-    owner_check = (
-        sb.table("calendars")
-        .select("owner_user_id")
-        .eq("id", str(calendar_id))
-        .single()
-        .execute()
-    )
-    cal_info = owner_check.data
-    if cal_info is None:
-        raise HTTPException(404, "Calendar not found")
-    if cal_info["owner_user_id"] != str(current_user.id):
-        raise HTTPException(403, "Only owner can update calendar")
-
-    update_data = payload.model_dump(exclude_unset=True)
-    update_data["updated_at"] = time_stamp()
-
-    resp = sb.table("calendars").update(update_data).eq("id", str(calendar_id)).execute()
-    return resp.data[0]
-
-
-@app.delete("/calendars/{calendar_id}", status_code=204)
-async def delete_calendar(calendar_id: UUID, current_user: UserRead = Depends(get_current_user)):
-    owner_check = (
-        sb.table("calendars")
-        .select("owner_user_id")
-        .eq("id", str(calendar_id))
-        .single()
-        .execute()
-    )
-    cal_info = owner_check.data
-    if cal_info is None:
-        raise HTTPException(404, "Calendar not found")
-    if cal_info["owner_user_id"] != str(current_user.id):
-        raise HTTPException(403, "Only owner can delete calendar")
-
-    sb.table("events").delete().eq("calendar_id", str(calendar_id)).execute()
-    sb.table("calendar_shares").delete().eq("calendar_id", str(calendar_id)).execute()
-    sb.table("calendar_subscriptions").delete().eq("calendar_id", str(calendar_id)).execute()
-    sb.table("calendars").delete().eq("id", str(calendar_id)).execute()
-    return None
-
-
-@app.post("/calendars/{calendar_id}/share", status_code=201)
-async def share_calendar(calendar_id: UUID, payload: CalendarShareCreate, current_user: UserRead = Depends(get_current_user)):
-    owner_check = (
-        sb.table("calendars")
-        .select("owner_user_id")
-        .eq("id", str(calendar_id))
-        .single()
-        .execute()
-    )
-    cal_info = owner_check.data
-    if cal_info is None:
-        raise HTTPException(404, "Calendar not found")
-    if cal_info["owner_user_id"] != str(current_user.id):
-        raise HTTPException(403, "Only owner can share calendar")
-
-    share_row = {
-        "calendar_id": str(calendar_id),
-        "user_id": str(payload.user_id),
-        "permission": payload.permission,
-    }
-
-    resp = sb.table("calendar_shares").insert(share_row).execute()
-    return resp.data[0]
-
-
-@app.delete("/calendars/{calendar_id}/share/{user_id}", status_code=204)
-async def unshare_calendar(calendar_id: UUID, user_id: UUID, current_user: UserRead = Depends(get_current_user)):
-    owner_check = (
-        sb.table("calendars")
-        .select("owner_user_id")
-        .eq("id", str(calendar_id))
-        .single()
-        .execute()
-    )
-    cal_info = owner_check.data
-    if cal_info is None:
-        raise HTTPException(404, "Calendar not found")
-    if cal_info["owner_user_id"] != str(current_user.id):
-        raise HTTPException(403, "Only owner can unshare calendar")
-
-    sb.table("calendar_shares").delete() \
-        .eq("calendar_id", str(calendar_id)) \
-        .eq("user_id", str(user_id)) \
-        .execute()
-    return None
-
-
-@app.post("/calendars/{calendar_id}/subscribe", status_code=201)
-async def subscribe_calendar(calendar_id: UUID, current_user: UserRead = Depends(get_current_user)):
-    cal_resp = sb.table("calendars").select("id").eq("id", str(calendar_id)).single().execute()
-    if cal_resp.data is None:
-        raise HTTPException(404, "Calendar not found")
-
-    sub_row = {
-        "calendar_id": str(calendar_id),
-        "subscriber_user_id": str(current_user.id),
-        "is_hidden": False,
-    }
-
-    resp = sb.table("calendar_subscriptions").insert(sub_row).execute()
-    return resp.data[0]
-
-
-@app.patch("/calendars/{calendar_id}/subscription")
-async def update_subscription(calendar_id: UUID, payload: CalendarSubscriptionUpdate, current_user: UserRead = Depends(get_current_user)):
-    resp = (
-        sb.table("calendar_subscriptions")
-        .update({"is_hidden": payload.is_hidden})
-        .eq("calendar_id", str(calendar_id))
-        .eq("subscriber_user_id", str(current_user.id))
-        .execute()
-    )
-
-    if not resp.data:
-        sub_row = {
-            "calendar_id": str(calendar_id),
-            "subscriber_user_id": str(current_user.id),
-            "is_hidden": payload.is_hidden,
+    rows = (await session.execute(stmt.order_by(Event.start_at.asc()))).scalars().all()
+    
+    def redact(ev: Event) -> Dict:
+        if ev.visibility == "busy" and ev.owner_user_id != current_user.id:
+            return {
+                "id": ev.id, "calendar_id": ev.calendar_id, "owner_user_id": ev.owner_user_id,
+                "title": "Busy", "description": None, "location": None,
+                "start_at": ev.start_at, "end_at": ev.end_at, "timezone": ev.timezone,
+                "all_day": ev.all_day, "visibility": ev.visibility, "rrule": ev.rrule,
+                "created_at": ev.created_at, "updated_at": ev.updated_at,
+            }
+        return {
+            "id": ev.id, "calendar_id": ev.calendar_id, "owner_user_id": ev.owner_user_id,
+            "title": ev.title, "description": ev.description, "location": ev.location,
+            "start_at": ev.start_at, "end_at": ev.end_at, "timezone": ev.timezone,
+            "all_day": ev.all_day, "visibility": ev.visibility, "rrule": ev.rrule,
+            "created_at": ev.created_at, "updated_at": ev.updated_at,
         }
-        create_resp = sb.table("calendar_subscriptions").insert(sub_row).execute()
-        return create_resp.data[0]
 
-    return resp.data[0]
-
-
-@app.delete("/calendars/{calendar_id}/subscription", status_code=204)
-async def unsubscribe_calendar(calendar_id: UUID, current_user: UserRead = Depends(get_current_user)):
-    sb.table("calendar_subscriptions") \
-        .delete() \
-        .eq("calendar_id", str(calendar_id)) \
-        .eq("subscriber_user_id", str(current_user.id)) \
-        .execute()
-    return None
-
-
-# -------------------------
-# Events
-# -------------------------
+    return [redact(ev) for ev in rows]
+"""
 @app.get("/calendars/{calendar_id}/events")
 async def list_events(
     calendar_id: UUID,
@@ -380,270 +614,332 @@ async def list_events(
     start_to: Optional[datetime] = None,
     current_user: UserRead = Depends(get_current_user),
 ):
-    cal_resp = sb.table("calendars").select("*").eq("id", str(calendar_id)).single().execute()
-    cal = cal_resp.data
-    if cal is None:
+    if calendar_id not in CALENDARS:
         raise HTTPException(404, "Calendar not found")
 
-    is_owner = cal["owner_user_id"] == str(current_user.id)
-    is_public = cal["visibility"] == "public"
-
-    share_resp = (
-        sb.table("calendar_shares")
-        .select("calendar_id,user_id")
-        .eq("calendar_id", str(calendar_id))
-        .eq("user_id", str(current_user.id))
-        .execute()
-    )
-    is_shared = len(share_resp.data or []) > 0
-
-    if not (is_owner or is_public or is_shared):
-        raise HTTPException(403, "Not allowed to view events in this calendar")
-
-    query = (
-        sb.table("events")
-        .select("*")
-        .eq("calendar_id", str(calendar_id))
-    )
-
-    if start_from:
-        query = query.gte("start_at", start_from.isoformat())
-    if start_to:
-        query = query.lte("start_at", start_to.isoformat())
-
-    resp = query.execute()
-    rows = resp.data or []
-
-    if q:
-        ql = q.lower()
-        rows = [
-            ev for ev in rows
-            if ql in (ev.get("title") or "").lower()
-            or ql in (ev.get("description") or "").lower()
-        ]
-
     def allowed(ev: Dict) -> Dict:
-        is_ev_owner = (ev["owner_user_id"] == str(current_user.id))
-        if ev["visibility"] == "busy" and not is_ev_owner:
-            redacted = dict(ev)
+        is_owner = ev["owner_user_id"] == current_user.id
+        if ev["visibility"] == "busy" and not is_owner:
+            redacted = ev.copy()
             redacted["title"] = "Busy"
             redacted["description"] = None
             redacted["location"] = None
             return redacted
         return ev
 
-    return [allowed(ev) for ev in rows]
+    items = [
+        allowed(ev)
+        for ev in EVENTS.values()
+        if ev["calendar_id"] == calendar_id
+    ]
 
+    if q:
+        ql = q.lower()
+        items = [ev for ev in items if ql in (ev["title"] or "").lower() or ql in (ev.get("description") or "").lower()]
+    if start_from:
+        items = [ev for ev in items if ev["start_at"] >= start_from]
+    if start_to:
+        items = [ev for ev in items if ev["start_at"] <= start_to]
 
+    return items
+"""
 @app.get("/events/{event_id}")
-async def get_event(event_id: UUID, current_user: UserRead = Depends(get_current_user)):
-    resp = sb.table("events").select("*").eq("id", str(event_id)).single().execute()
-    ev = resp.data
-    if ev is None:
+async def get_event(
+    event_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserRead = Depends(get_current_user),
+):
+    ev = (await session.execute(select(Event).where(Event.id == event_id))).scalar_one_or_none()
+    if not ev:
         raise HTTPException(404, "Event not found")
 
-    cal_resp = sb.table("calendars").select("*").eq("id", ev["calendar_id"]).single().execute()
-    cal = cal_resp.data
-    if cal is None:
-        raise HTTPException(404, "Parent calendar not found")
-
-    is_owner = ev["owner_user_id"] == str(current_user.id)
-    cal_owner = cal["owner_user_id"] == str(current_user.id)
-    cal_public = cal["visibility"] == "public"
-    cal_shared_resp = (
-        sb.table("calendar_shares")
-        .select("calendar_id,user_id")
-        .eq("calendar_id", cal["id"])
-        .eq("user_id", str(current_user.id))
-        .execute()
-    )
-    cal_shared = len(cal_shared_resp.data or []) > 0
-
-    if not (is_owner or cal_owner or cal_public or cal_shared):
+    # need to check calendar visibility/share if not owner
+    cal = (await session.execute(select(Calendar).where(Calendar.id == ev.calendar_id))).scalar_one_or_none()
+    is_owner = ev.owner_user_id == current_user.id
+    is_public = cal and cal.visibility == "public"
+    is_shared = (await session.execute(
+        select(CalendarShare).where(
+            CalendarShare.calendar_id == ev.calendar_id,
+            CalendarShare.user_id == current_user.id
+        )
+    )).scalar_one_or_none() is not None
+    if not (is_owner or is_public or is_shared):
         raise HTTPException(403, "Not allowed to view this event")
 
+    if ev.visibility == "busy" and not is_owner:
+        return {
+            "id": ev.id, "calendar_id": ev.calendar_id, "owner_user_id": ev.owner_user_id,
+            "title": "Busy", "description": None, "location": None,
+            "start_at": ev.start_at, "end_at": ev.end_at, "timezone": ev.timezone,
+            "all_day": ev.all_day, "visibility": ev.visibility, "rrule": ev.rrule,
+            "created_at": ev.created_at, "updated_at": ev.updated_at,
+        }
+    return {
+        "id": ev.id, "calendar_id": ev.calendar_id, "owner_user_id": ev.owner_user_id,
+        "title": ev.title, "description": ev.description, "location": ev.location,
+        "start_at": ev.start_at, "end_at": ev.end_at, "timezone": ev.timezone,
+        "all_day": ev.all_day, "visibility": ev.visibility, "rrule": ev.rrule,
+        "created_at": ev.created_at, "updated_at": ev.updated_at,
+    }
+"""
+@app.get("/events/{event_id}")
+async def get_event(event_id: UUID, current_user: UserRead = Depends(get_current_user)):
+    ev = EVENTS.get(event_id)
+    if not ev:
+        raise HTTPException(404, "Event not found")
+    is_owner = ev["owner_user_id"] == current_user.id
     if ev["visibility"] == "busy" and not is_owner:
-        redacted = dict(ev)
+        redacted = ev.copy()
         redacted["title"] = "Busy"
         redacted["description"] = None
         redacted["location"] = None
         return redacted
-
     return ev
-
-
+"""
 @app.post("/calendars/{calendar_id}/events", status_code=201)
-async def create_event(calendar_id: UUID, payload: EventCreate, current_user: UserRead = Depends(get_current_user)):
-    cal_resp = sb.table("calendars").select("owner_user_id").eq("id", str(calendar_id)).single().execute()
-    cal = cal_resp.data
-    if cal is None:
+async def create_event(calendar_id: UUID, payload: EventCreate, session: AsyncSession = Depends(get_session),
+                       current_user: UserRead = Depends(get_current_user)):
+    cal = (await session.execute(select(Calendar).where(Calendar.id == calendar_id))).scalar_one_or_none()
+    if not cal:
         raise HTTPException(404, "Calendar not found")
-    if cal["owner_user_id"] != str(current_user.id):
-        raise HTTPException(403, "Only owner can create events on this calendar")
-
-    event_id = str(uuid4())
-    now = time_stamp()
-
-    insert_row = {
-        "id": event_id,
-        "calendar_id": str(calendar_id),
-        "owner_user_id": str(current_user.id),
-        "title": payload.title,
-        "description": payload.description,
-        "location": payload.location,
-        "start_at": payload.start_at.isoformat(),
-        "end_at": payload.end_at.isoformat(),
-        "timezone": payload.timezone,
-        "all_day": payload.all_day,
-        "visibility": payload.visibility,
-        "rrule": payload.rrule,
-        "reminders": payload.reminders,  # jsonb column
-        "created_at": now,
-        "updated_at": now,
+    ev = Event(
+        calendar_id=calendar_id, owner_user_id=current_user.id,
+        title=payload.title, description=payload.description, location=payload.location,
+        start_at=payload.start_at, end_at=payload.end_at, timezone=payload.timezone,
+        all_day=payload.all_day, visibility=payload.visibility, rrule=payload.rrule
+    )
+    session.add(ev)
+    await session.commit()
+    await session.refresh(ev)
+    return {
+        "id": ev.id, "calendar_id": ev.calendar_id, "owner_user_id": ev.owner_user_id,
+        "title": ev.title, "description": ev.description, "location": ev.location,
+        "start_at": ev.start_at, "end_at": ev.end_at, "timezone": ev.timezone,
+        "all_day": ev.all_day, "visibility": ev.visibility, "rrule": ev.rrule,
+        "created_at": ev.created_at, "updated_at": ev.updated_at
     }
-
-    resp = sb.table("events").insert(insert_row).execute()
-    return resp.data[0]
-
-
+"""
+async def create_event(calendar_id: UUID, payload: EventCreate, current_user: UserRead = Depends(get_current_user)):
+    if calendar_id not in CALENDARS:
+        raise HTTPException(404, "Calendar not found")
+    event_id = uuid4()
+    EVENTS[event_id] = {
+        "id": event_id,
+        "calendar_id": calendar_id,
+        "owner_user_id": current_user.id,
+        **payload.model_dump(),
+        "created_at": _now(),
+        "updated_at": _now(),
+    }
+    return EVENTS[event_id]
+"""
 @app.put("/events/{event_id}")
-async def update_event(event_id: UUID, payload: EventUpdate, current_user: UserRead = Depends(get_current_user)):
-    owner_resp = sb.table("events").select("owner_user_id").eq("id", str(event_id)).single().execute()
-    ev_info = owner_resp.data
-    if ev_info is None:
+async def update_event(
+    event_id: UUID,
+    payload: EventUpdate,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserRead = Depends(get_current_user),
+):
+    ev = (await session.execute(select(Event).where(Event.id == event_id))).scalar_one_or_none()
+    if not ev:
         raise HTTPException(404, "Event not found")
-    if ev_info["owner_user_id"] != str(current_user.id):
+    if ev.owner_user_id != current_user.id:
         raise HTTPException(403, "Only owner can update event")
 
-    update_data = payload.model_dump(exclude_unset=True)
-
-    if "start_at" in update_data and update_data["start_at"] is not None:
-        update_data["start_at"] = update_data["start_at"].isoformat()
-    if "end_at" in update_data and update_data["end_at"] is not None:
-        update_data["end_at"] = update_data["end_at"].isoformat()
-
-    update_data["updated_at"] = time_stamp()
-
-    resp = sb.table("events").update(update_data).eq("id", str(event_id)).execute()
-
-    if not resp.data:
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(ev, k, v)
+    await session.commit()
+    await session.refresh(ev)
+    return {
+        "id": ev.id, "calendar_id": ev.calendar_id, "owner_user_id": ev.owner_user_id,
+        "title": ev.title, "description": ev.description, "location": ev.location,
+        "start_at": ev.start_at, "end_at": ev.end_at, "timezone": ev.timezone,
+        "all_day": ev.all_day, "visibility": ev.visibility, "rrule": ev.rrule,
+        "created_at": ev.created_at, "updated_at": ev.updated_at,
+    }
+"""
+@app.put("/events/{event_id}")
+async def update_event(event_id: UUID, payload: EventUpdate, current_user: UserRead = Depends(get_current_user)):
+    ev = EVENTS.get(event_id)
+    if not ev:
         raise HTTPException(404, "Event not found")
-
-    return resp.data[0]
-
-
+    if ev["owner_user_id"] != current_user.id:
+        raise HTTPException(403, "Only owner can update event")
+    ev.update(payload.model_dump(exclude_unset=True))
+    ev["updated_at"] = _now()
+    return ev
+"""
 @app.delete("/events/{event_id}", status_code=204)
-async def delete_event(event_id: UUID, current_user: UserRead = Depends(get_current_user)):
-    owner_resp = sb.table("events").select("owner_user_id").eq("id", str(event_id)).single().execute()
-    ev_info = owner_resp.data
-    if ev_info is None:
+async def delete_event(
+    event_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserRead = Depends(get_current_user),
+):
+    ev = (await session.execute(select(Event).where(Event.id == event_id))).scalar_one_or_none()
+    if not ev:
         raise HTTPException(404, "Event not found")
-    if ev_info["owner_user_id"] != str(current_user.id):
+    if ev.owner_user_id != current_user.id:
         raise HTTPException(403, "Only owner can delete event")
 
-    sb.table("event_shares").delete().eq("event_id", str(event_id)).execute()
-    sb.table("events").delete().eq("id", str(event_id)).execute()
-
+    await session.delete(ev)
+    await session.commit()
     return None
 
-
-@app.post("/events/{event_id}/share", status_code=201)
-async def share_event(event_id: UUID, payload: EventShareCreate, current_user: UserRead = Depends(get_current_user)):
-    owner_resp = sb.table("events").select("owner_user_id").eq("id", str(event_id)).single().execute()
-    ev_info = owner_resp.data
-    if ev_info is None:
+"""
+@app.delete("/events/{event_id}", status_code=204)
+async def delete_event(event_id: UUID, current_user: UserRead = Depends(get_current_user)):
+    ev = EVENTS.get(event_id)
+    if not ev:
         raise HTTPException(404, "Event not found")
-    if ev_info["owner_user_id"] != str(current_user.id):
+    if ev["owner_user_id"] != current_user.id:
+        raise HTTPException(403, "Only owner can delete event")
+    EVENTS.pop(event_id, None)
+    for key in list(EVENT_SHARES):
+        if key[0] == event_id:
+            EVENT_SHARES.discard(key)
+    return None
+"""
+@app.post("/events/{event_id}/share", status_code=201)
+async def share_event(
+    event_id: UUID,
+    payload: EventShareCreate,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserRead = Depends(get_current_user),
+):
+    ev = (await session.execute(select(Event).where(Event.id == event_id))).scalar_one_or_none()
+    if not ev:
+        raise HTTPException(404, "Event not found")
+    if ev.owner_user_id != current_user.id:
         raise HTTPException(403, "Only owner can share event")
 
-    share_row = {
-        "event_id": str(event_id),
-        "user_id": str(payload.user_id),
-        "permission": payload.permission,
-    }
+    exists = (await session.execute(
+        select(EventShare).where(
+            EventShare.event_id == event_id,
+            EventShare.user_id == payload.user_id
+        )
+    )).scalar_one_or_none()
+    if not exists:
+        session.add(EventShare(event_id=event_id, user_id=payload.user_id))
+        await session.commit()
+    return {"event_id": str(event_id), "user_id": str(payload.user_id), "permission": "view"}
 
-    resp = sb.table("event_shares").insert(share_row).execute()
-    return resp.data[0]
+@app.delete("/events/{event_id}/share/{user_id}", status_code=204)
+async def unshare_event(
+    event_id: UUID,
+    user_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserRead = Depends(get_current_user),
+):
+    ev = (await session.execute(select(Event).where(Event.id == event_id))).scalar_one_or_none()
+    if not ev:
+        raise HTTPException(404, "Event not found")
+    if ev.owner_user_id != current_user.id:
+        raise HTTPException(403, "Only owner can unshare event")
 
+    row = (await session.execute(
+        select(EventShare).where(EventShare.event_id == event_id, EventShare.user_id == user_id)
+    )).scalar_one_or_none()
+    if row:
+        await session.delete(row)
+        await session.commit()
+    return None
+
+"""
+@app.post("/events/{event_id}/share", status_code=201)
+async def share_event(event_id: UUID, payload: EventShareCreate, current_user: UserRead = Depends(get_current_user)):
+    ev = EVENTS.get(event_id)
+    if not ev:
+        raise HTTPException(404, "Event not found")
+    if ev["owner_user_id"] != current_user.id:
+        raise HTTPException(403, "Only owner can share event")
+    EVENT_SHARES.add((event_id, payload.user_id))
+    return {"event_id": str(event_id), "user_id": str(payload.user_id), "permission": "view"}
 
 @app.delete("/events/{event_id}/share/{user_id}", status_code=204)
 async def unshare_event(event_id: UUID, user_id: UUID, current_user: UserRead = Depends(get_current_user)):
-    owner_resp = sb.table("events").select("owner_user_id").eq("id", str(event_id)).single().execute()
-    ev_info = owner_resp.data
-    if ev_info is None:
+    ev = EVENTS.get(event_id)
+    if not ev:
         raise HTTPException(404, "Event not found")
-    if ev_info["owner_user_id"] != str(current_user.id):
+    if ev["owner_user_id"] != current_user.id:
         raise HTTPException(403, "Only owner can unshare event")
-
-    sb.table("event_shares").delete() \
-        .eq("event_id", str(event_id)) \
-        .eq("user_id", str(user_id)) \
-        .execute()
+    EVENT_SHARES.discard((event_id, user_id))
     return None
+"""
+@app.post("/events/{event_id}/copy", status_code=201)
+async def copy_event(
+    event_id: UUID,
+    target_calendar_id: Optional[UUID] = None,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserRead = Depends(get_current_user),
+):
+    src = (await session.execute(select(Event).where(Event.id == event_id))).scalar_one_or_none()
+    if not src:
+        raise HTTPException(404, "Event not found")
 
+    # default target: any calendar the current user owns
+    dest_cal = target_calendar_id
+    if not dest_cal:
+        owned_cal = (await session.execute(
+            select(Calendar.id).where(Calendar.owner_user_id == current_user.id)
+        )).scalars().first()
+        if not owned_cal:
+            raise HTTPException(400, "You don't own a destination calendar")
+        dest_cal = owned_cal
 
+    new_ev = Event(
+        calendar_id=dest_cal,
+        owner_user_id=current_user.id,
+        title=src.title,
+        description=src.description,
+        location=src.location,
+        start_at=src.start_at,
+        end_at=src.end_at,
+        timezone=src.timezone,
+        all_day=src.all_day,
+        visibility=src.visibility,
+        rrule=src.rrule,
+    )
+    session.add(new_ev)
+    await session.commit()
+    await session.refresh(new_ev)
+    return {
+        "source_event_id": str(event_id),
+        "new_event_id": str(new_ev.id),
+        "target_calendar_id": str(dest_cal),
+        "status": "copied",
+    }
+
+"""
 @app.post("/events/{event_id}/copy", status_code=201)
 async def copy_event(
     event_id: UUID,
     target_calendar_id: Optional[UUID] = None,
     current_user: UserRead = Depends(get_current_user),
 ):
-    src_resp = sb.table("events").select("*").eq("id", str(event_id)).single().execute()
-    src = src_resp.data
-    if src is None:
+    src = EVENTS.get(event_id)
+    if not src:
         raise HTTPException(404, "Event not found")
-
-    if target_calendar_id is None:
-        cal_query = sb.table("calendars").select("id").eq("owner_user_id", str(current_user.id)).execute()
-        owned_cals = [row["id"] for row in (cal_query.data or [])]
-        if not owned_cals:
-            raise HTTPException(400, "No target calendar available for copy")
-        dest_cal_id = owned_cals[0]
-    else:
-        dest_cal_id = str(target_calendar_id)
-
-    new_id = str(uuid4())
-    now = time_stamp()
-
-    insert_row = {
+    target_cal = target_calendar_id
+    if not target_cal:
+        # pick any calendar the current user owns; check the DEMO
+        owned = [cid for cid, c in CALENDARS.items() if c["owner_user_id"] == current_user.id]
+        target_cal = owned[0] if owned else DEMO_CALENDAR_ID
+    new_id = uuid4()
+    EVENTS[new_id] = {
+        **{k: v for k, v in src.items() if k not in {"id", "calendar_id", "created_at", "updated_at", "owner_user_id"}},
         "id": new_id,
-        "calendar_id": dest_cal_id,
-        "owner_user_id": str(current_user.id),
-        "title": src.get("title"),
-        "description": src.get("description"),
-        "location": src.get("location"),
-        "start_at": src.get("start_at"),
-        "end_at": src.get("end_at"),
-        "timezone": src.get("timezone"),
-        "all_day": src.get("all_day"),
-        "visibility": src.get("visibility"),
-        "rrule": src.get("rrule"),
-        "reminders": src.get("reminders"),
-        "created_at": now,
-        "updated_at": now,
+        "calendar_id": target_cal,
+        "owner_user_id": current_user.id,
+        "created_at": _now(),
+        "updated_at": _now(),
     }
-
-    sb.table("events").insert(insert_row).execute()
-
-    return {
-        "source_event_id": str(event_id),
-        "new_event_id": new_id,
-        "target_calendar_id": dest_cal_id,
-        "status": "copied",
-    }
-
-
-# -------------------------
-# Notifications
-# -------------------------
+    return {"source_event_id": str(event_id), "new_event_id": str(new_id), "target_calendar_id": str(target_cal), "status": "copied"}
+"""
+# -------------
+# Notifications (browser pop-up registration)
+# -----------------
 @app.post("/notifications/register", status_code=201)
 async def register_browser_push(sub: BrowserPushSubscription, current_user: UserRead = Depends(get_current_user)):
-    row = {
-        "user_id": str(current_user.id),
-        "endpoint": sub.endpoint,
-        "created_at": time_stamp(),
-    }
-
-    sb.table("notif_subs").insert(row).execute()
+    NOTIF_SUBS.setdefault(current_user.id, set()).add(sub.endpoint)
     return {"status": "registered", "endpoint": sub.endpoint}
 
