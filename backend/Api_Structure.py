@@ -216,7 +216,7 @@ async def get_calendar(calendar_id: UUID, current_user: UserRead = Depends(get_c
     is_public = cal["visibility"] == "public"
 
     share_resp = (
-        sb.table("calendar_shares")
+        sb.table("calendar _shares")
         .select("calendar_id,user_id")
         .eq("calendar_id", str(calendar_id))
         .eq("user_id", str(current_user.id))
@@ -268,8 +268,8 @@ async def delete_calendar(calendar_id: UUID, current_user: UserRead = Depends(ge
         raise HTTPException(403, "Only owner can delete calendar")
 
     sb.table("events").delete().eq("calendar_id", str(calendar_id)).execute()
-    sb.table("calendar_shares").delete().eq("calendar_id", str(calendar_id)).execute()
-    sb.table("calendar_subscriptions").delete().eq("calendar_id", str(calendar_id)).execute()
+    sb.table("calendar _shares").delete().eq("calendar_id", str(calendar_id)).execute()
+    sb.table("calendar_ subscriptions").delete().eq("calendar_id", str(calendar_id)).execute()
     sb.table("calendars").delete().eq("id", str(calendar_id)).execute()
     return None
 
@@ -292,10 +292,10 @@ async def share_calendar(calendar_id: UUID, payload: CalendarShareCreate, curren
     share_row = {
         "calendar_id": str(calendar_id),
         "user_id": str(payload.user_id),
-        "permission": payload.permission,
+        # schema has no 'permission' column for calendar shares
     }
 
-    resp = sb.table("calendar_shares").insert(share_row).execute()
+    resp = sb.table("calendar _shares").insert(share_row).execute()
     return resp.data[0]
 
 
@@ -314,7 +314,7 @@ async def unshare_calendar(calendar_id: UUID, user_id: UUID, current_user: UserR
     if cal_info["owner_user_id"] != str(current_user.id):
         raise HTTPException(403, "Only owner can unshare calendar")
 
-    sb.table("calendar_shares").delete() \
+    sb.table("calendar _shares").delete() \
         .eq("calendar_id", str(calendar_id)) \
         .eq("user_id", str(user_id)) \
         .execute()
@@ -333,14 +333,14 @@ async def subscribe_calendar(calendar_id: UUID, current_user: UserRead = Depends
         "is_hidden": False,
     }
 
-    resp = sb.table("calendar_subscriptions").insert(sub_row).execute()
+    resp = sb.table("calendar_ subscriptions").insert(sub_row).execute()
     return resp.data[0]
 
 
 @app.patch("/calendars/{calendar_id}/subscription")
 async def update_subscription(calendar_id: UUID, payload: CalendarSubscriptionUpdate, current_user: UserRead = Depends(get_current_user)):
     resp = (
-        sb.table("calendar_subscriptions")
+        sb.table("calendar_ subscriptions")
         .update({"is_hidden": payload.is_hidden})
         .eq("calendar_id", str(calendar_id))
         .eq("subscriber_user_id", str(current_user.id))
@@ -353,7 +353,7 @@ async def update_subscription(calendar_id: UUID, payload: CalendarSubscriptionUp
             "subscriber_user_id": str(current_user.id),
             "is_hidden": payload.is_hidden,
         }
-        create_resp = sb.table("calendar_subscriptions").insert(sub_row).execute()
+        create_resp = sb.table("calendar_ subscriptions").insert(sub_row).execute()
         return create_resp.data[0]
 
     return resp.data[0]
@@ -361,7 +361,7 @@ async def update_subscription(calendar_id: UUID, payload: CalendarSubscriptionUp
 
 @app.delete("/calendars/{calendar_id}/subscription", status_code=204)
 async def unsubscribe_calendar(calendar_id: UUID, current_user: UserRead = Depends(get_current_user)):
-    sb.table("calendar_subscriptions") \
+    sb.table("calendar_ subscriptions") \
         .delete() \
         .eq("calendar_id", str(calendar_id)) \
         .eq("subscriber_user_id", str(current_user.id)) \
@@ -389,7 +389,7 @@ async def list_events(
     is_public = cal["visibility"] == "public"
 
     share_resp = (
-        sb.table("calendar_shares")
+        sb.table("calendar _shares")
         .select("calendar_id,user_id")
         .eq("calendar_id", str(calendar_id))
         .eq("user_id", str(current_user.id))
@@ -424,7 +424,7 @@ async def list_events(
 
     def allowed(ev: Dict) -> Dict:
         is_ev_owner = (ev["owner_user_id"] == str(current_user.id))
-        if ev["visibility"] == "busy" and not is_ev_owner:
+        if ev["visiblity"] == "busy" and not is_ev_owner:
             redacted = dict(ev)
             redacted["title"] = "Busy"
             redacted["description"] = None
@@ -451,7 +451,7 @@ async def get_event(event_id: UUID, current_user: UserRead = Depends(get_current
     cal_owner = cal["owner_user_id"] == str(current_user.id)
     cal_public = cal["visibility"] == "public"
     cal_shared_resp = (
-        sb.table("calendar_shares")
+        sb.table("calendar _shares")
         .select("calendar_id,user_id")
         .eq("calendar_id", cal["id"])
         .eq("user_id", str(current_user.id))
@@ -462,7 +462,7 @@ async def get_event(event_id: UUID, current_user: UserRead = Depends(get_current
     if not (is_owner or cal_owner or cal_public or cal_shared):
         raise HTTPException(403, "Not allowed to view this event")
 
-    if ev["visibility"] == "busy" and not is_owner:
+    if ev["visiblity"] == "busy" and not is_owner:
         redacted = dict(ev)
         redacted["title"] = "Busy"
         redacted["description"] = None
@@ -495,11 +495,11 @@ async def create_event(calendar_id: UUID, payload: EventCreate, current_user: Us
         "end_at": payload.end_at.isoformat(),
         "timezone": payload.timezone,
         "all_day": payload.all_day,
-        "visibility": payload.visibility,
+        "visiblity": payload.visibility,   # schema uses 'visiblity'
         "rrule": payload.rrule,
-        "reminders": payload.reminders,  # jsonb column
+        # schema has no 'reminders'
         "created_at": now,
-        "updated_at": now,
+        "update_at": now,                  # schema uses 'update_at'
     }
 
     resp = sb.table("events").insert(insert_row).execute()
@@ -522,7 +522,11 @@ async def update_event(event_id: UUID, payload: EventUpdate, current_user: UserR
     if "end_at" in update_data and update_data["end_at"] is not None:
         update_data["end_at"] = update_data["end_at"].isoformat()
 
-    update_data["updated_at"] = time_stamp()
+    # map visibility -> visiblity if present in payload
+    if "visibility" in update_data:
+        update_data["visiblity"] = update_data.pop("visibility")
+
+    update_data["update_at"] = time_stamp()
 
     resp = sb.table("events").update(update_data).eq("id", str(event_id)).execute()
 
@@ -541,7 +545,7 @@ async def delete_event(event_id: UUID, current_user: UserRead = Depends(get_curr
     if ev_info["owner_user_id"] != str(current_user.id):
         raise HTTPException(403, "Only owner can delete event")
 
-    sb.table("event_shares").delete().eq("event_id", str(event_id)).execute()
+    sb.table("event shares").delete().eq("event_id", str(event_id)).execute()
     sb.table("events").delete().eq("id", str(event_id)).execute()
 
     return None
@@ -558,11 +562,11 @@ async def share_event(event_id: UUID, payload: EventShareCreate, current_user: U
 
     share_row = {
         "event_id": str(event_id),
-        "user_id": str(payload.user_id),
-        "permission": payload.permission,
+        "user_ id": str(payload.user_id),   # schema column name (with space)
+        # schema has no 'permission'
     }
 
-    resp = sb.table("event_shares").insert(share_row).execute()
+    resp = sb.table("event shares").insert(share_row).execute()
     return resp.data[0]
 
 
@@ -575,9 +579,9 @@ async def unshare_event(event_id: UUID, user_id: UUID, current_user: UserRead = 
     if ev_info["owner_user_id"] != str(current_user.id):
         raise HTTPException(403, "Only owner can unshare event")
 
-    sb.table("event_shares").delete() \
+    sb.table("event shares").delete() \
         .eq("event_id", str(event_id)) \
-        .eq("user_id", str(user_id)) \
+        .eq("user_ id", str(user_id)) \
         .execute()
     return None
 
@@ -616,11 +620,11 @@ async def copy_event(
         "end_at": src.get("end_at"),
         "timezone": src.get("timezone"),
         "all_day": src.get("all_day"),
-        "visibility": src.get("visibility"),
+        "visiblity": src.get("visiblity"),
         "rrule": src.get("rrule"),
-        "reminders": src.get("reminders"),
+        # no 'reminders'
         "created_at": now,
-        "updated_at": now,
+        "update_at": now,
     }
 
     sb.table("events").insert(insert_row).execute()
@@ -646,4 +650,3 @@ async def register_browser_push(sub: BrowserPushSubscription, current_user: User
 
     sb.table("notif_subs").insert(row).execute()
     return {"status": "registered", "endpoint": sub.endpoint}
-
