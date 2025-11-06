@@ -29,6 +29,11 @@ from .Api_Pydantic import (
 from .db import lifespan, get_session
 from .models import User, Calendar, CalendarShare, CalendarSubscription, Event, EventShare
 
+#defines the in-memory notification stores 
+from collections import defaultdict
+NOTIF_SUBS=deafultdict(set)
+
+
 # CHANGE: add lifespan=lifespan so the DB engine/session lifecycle is managed
 app = FastAPI(title="Calendar API", version="0.1.0", lifespan=lifespan)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
