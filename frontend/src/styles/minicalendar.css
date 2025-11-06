@@ -4,28 +4,30 @@
 } */
 
 .mini-calendar .fc table {
-    font-size: 0.5rem;
+  font-size: 0.5rem;
 }
 
-.mini-calendar .fc .fc-toolbar-title{
-    font-size: 1rem;
+.mini-calendar .fc .fc-toolbar-title {
+  font-size: 1rem;
 }
 
 .mini-calendar .fc .fc-toolbar.fc-header-toolbar {
-    margin: .25em;
+  margin: 0.25em;
 }
 
 .mini-calendar .fc .fc-daygrid-day-top {
-    justify-content: center;
+  justify-content: center;
 }
 
 .mini-calendar .fc .fc-daygrid-day-number {
-    font-size: 2em;
+  font-size: 2em;
 }
 
 .mini-calendar .fc .fc-prev-button .fc-button .fc-button-primary {
-    padding: 0;
+  padding: 0;
 }
 
 /* Grid cells padding */
-.mini-calendar .fc .fc-daygrid-day-frame { padding: 2px; }
+.mini-calendar .fc .fc-daygrid-day-frame {
+  padding: 2px;
+}
