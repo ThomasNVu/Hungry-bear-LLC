@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Optional, List, Literal, Dict, Tuple, Set
 from uuid import UUID, uuid4
 from datetime import datetime
+from .models import PushSubscription
 
 from fastapi import FastAPI, Depends, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordBearer
@@ -944,7 +945,29 @@ async def copy_event(
 # Notifications (browser pop-up registration)
 # -----------------
 @app.post("/notifications/register", status_code=201)
-async def register_browser_push(sub: BrowserPushSubscription, current_user: UserRead = Depends(get_current_user)):
-    NOTIF_SUBS.setdefault(current_user.id, set()).add(sub.endpoint)
-    return {"status": "registered", "endpoint": sub.endpoint}
+async def register_browser_push(
+    sub: BrowserPushSubscription,
+    session: AsyncSession = Depends(get_session),
+    current_user: UserRead = Depends(get_current_user),
+):
+    existing = (await session.execute(
+        select(PushSubscription).where(PushSubscription.endpoint == sub.endpoint)
+    )).scalar_one_or_none()
 
+    if existing:
+        existing.user_id = current_user.id
+        existing.p256dh = sub.keys.get("p256dh")
+        existing.auth   = sub.keys.get("auth")
+        await session.commit()
+        await session.refresh(existing)
+        return {"status": "updated", "endpoint": sub.endpoint}
+
+    row = PushSubscription(
+        user_id=current_user.id,
+        endpoint=sub.endpoint,
+        p256dh=sub.keys.get("p256dh"),
+        auth=sub.keys.get("auth"),
+    )
+    session.add(row)
+    await session.commit()
+    return {"status": "registered", "endpoint": sub.endpoint}
