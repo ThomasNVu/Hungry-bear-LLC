@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Dict
 from uuid import UUID
 from datetime import datetime
 
@@ -154,6 +154,8 @@ class EventShareRead(BaseModel):
 class APIError(BaseModel):
     message: str = Field(...)
     code: str = Field(...)
-
+    
+#keys makes sure that the subkeys.get and get authentication
 class BrowserPushSubscription(BaseModel):
     endpoint: str
+    keys: Optional[Dict[str,str]]= None
