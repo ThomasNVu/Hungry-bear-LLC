@@ -60,13 +60,13 @@ class CalendarRead(BaseModel):
     updated_at: datetime
 
 class CalendarShareCreate(BaseModel):
+    model_config= ConfigDict(extra="forbid")
     user_id: UUID
-    permission: Literal["view"] = "view"
 
 class CalendarShareRead(BaseModel):
     calendar_id: UUID
     user_id: UUID
-    permission: Literal["view"] = "view"
+    permission: Optional[str]=None
 
 # ---------
 # Hidden Feature
@@ -74,10 +74,15 @@ class CalendarShareRead(BaseModel):
 
 class CalendarSubscriptionUpdate(BaseModel):
     is_hidden: bool
+    
+class CalendarSubscriptionRead(BaseModel):
+    calendar_id= UUID
+    subscriber_user_id= UUID
+    is_hidden= bool
 
-# ---------------------------
-# Events, Recurrence, Reminders & Event Sharing/Copy
-# ---------------------------
+# -----
+# Events, Recurrence, Reminders & Event Sharing a Copy
+# -------
 
 class Reminder(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -96,7 +101,7 @@ class EventBase(BaseModel):
     all_day: bool = False
     visibility: Literal["public", "private", "busy"] = "private"
     rrule: Optional[str] = None
-    reminders: List[Reminder] = []
+    reminders: List[Reminder] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_times(self) -> "EventBase":
@@ -134,13 +139,13 @@ class EventRead(EventBase):
     updated_at: datetime
 
 class EventShareCreate(BaseModel):
+    model_config = ConfigDict (extra="forbid")
     user_id: UUID
-    permission: Literal["view"] = "view"
 
 class EventShareRead(BaseModel):
     event_id: UUID
     user_id: UUID
-    permission: Literal["view"] = "view"
+    permission: Optional[str] = None
 
 # ---------------------------
 # Errors / Notifications
