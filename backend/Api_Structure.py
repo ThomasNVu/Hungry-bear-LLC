@@ -45,13 +45,14 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
 def _now():
     return datetime.now().astimezone()
 
-
+"""
 # --- DB-backed helpers (replace the old in-memory demo bits) ---
 from uuid import UUID  
 
 def _now():
     # keep helper consistent with existing code
     return datetime.now().astimezone()
+"""
 
 DEMO_EMAIL = "demo@example.com"
 
@@ -70,7 +71,7 @@ async def ensure_demo_user(session: AsyncSession) -> "User":
     await session.commit()
     await session.refresh(user)
     return user
-
+"""
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
     session: AsyncSession = Depends(get_session),
@@ -91,7 +92,7 @@ async def get_current_user(
         created_at=user.created_at,
         updated_at=user.updated_at,
     )
-
+"""
 # --------------------------------------------------------------------
 # Auth helpers
 # --------------------------------------------------------------------
