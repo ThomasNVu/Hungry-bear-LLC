@@ -2,12 +2,12 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import { INITIAL_EVENTS, createEventId } from "../event-utils";
+import "../styles/calendar.css";
 import type {
   DateSelectArg,
   EventClickArg,
   EventContentArg,
   EventApi,
-  DatesSetArg,
 } from "@fullcalendar/core";
 
 type Props = {
@@ -57,13 +57,14 @@ export default function Calendar({ onEventsChange, onMonthChange }: Props) {
     <FullCalendar
       plugins={[dayGridPlugin, interactionPlugin]}
       initialView="dayGridMonth"
-      headerToolbar={{ left: "title", right: "prev,next today shareLink" }}
+      headerToolbar={{ left: "", right: "prev,next today shareLink" }}
       customButtons={{
         shareLink: {
           text: "Share",
           click: () => window.alert("Hello World!"),
         },
       }}
+      timeZone="local"
       height="100%"
       expandRows={true}
       editable={true}
@@ -77,7 +78,19 @@ export default function Calendar({ onEventsChange, onMonthChange }: Props) {
       eventContent={renderEventContent}
       // NEW: bubble up events and month changes
       eventsSet={(events) => onEventsChange?.(events)}
-      datesSet={(arg: DatesSetArg) => onMonthChange?.(arg.start)}
+      datesSet={(info) => onMonthChange?.(info.view.currentStart)}
+      eventClassNames={(arg) => {
+        // optional: drive color by a type
+        const type = arg.event.extendedProps.type; // e.g., "meeting" | "deadline"
+        return ["fc-pill", type ? `pill-${type}` : ""];
+      }}
+      dayCellContent={(arg) => {
+        const day = arg.date.getDate();
+        const month = arg.date.toLocaleString("default", { month: "short" });
+        if (day === 1) {
+          return `${month} ${day < 10 ? `0${day}` : day}`;
+        } else return day < 10 ? `0${day}` : `${day}`;
+      }}
     />
   );
 }

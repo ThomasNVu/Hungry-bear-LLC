@@ -1,0 +1,81 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap");
+
+.fc,
+.fc * {
+  font-family: "Inter", sans-serif !important;
+}
+
+.fc-scrollgrid-section > td {
+  border: 0px;
+}
+
+.fc-scrollgrid-section > th {
+  border: 0px !important;
+}
+
+.fc-scrollgrid {
+  border: 16px !important;
+}
+
+.fc .fc-daygrid-day.fc-day-today {
+  background: None;
+}
+
+.fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-number {
+  background: #78502c;
+  border-radius: 50%;
+  color: white;
+}
+
+.fc .fc-daygrid-day-number {
+  padding: 0px 2px;
+  margin: 2px;
+}
+
+/* base pill look for all views */
+.fc .fc-event.fc-pill {
+  position: relative;
+  padding-left: 12px; /* room for accent */
+  border: none; /* remove default border if any */
+  background: #fff; /* or transparent */
+}
+
+.fc .fc-event-main {
+  color: black;
+}
+
+/* left curved accent */
+.fc .fc-event.fc-pill::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #a5ffa8;
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+}
+
+.fc .fc-event.fc-pill.pill-meeting::before {
+  background: #9fff9f;
+}
+
+.fc-icon {
+  font-family: fcicons !important;
+}
+
+.fc-col-header-cell-cushion,
+.fc-daygrid-day-number {
+  font-weight: 400;
+}
+
+.fc .fc-col-header-cell {
+  border-left: none !important;
+  border-right: none !important;
+}
+
+.fc-theme-standard td,
+.fc-theme-standard th {
+  border-color: #78502c33 !important;
+}

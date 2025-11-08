@@ -6,8 +6,10 @@ import "./index.css";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import PageNotFound from "./pages/PageNotFound.tsx";
 import CalendarPage from "./pages/CalendarPage.tsx";
+import TestPage from "./pages/TestPage.tsx";
 
 const router = createBrowserRouter([
+  { path: "/Test", element: <TestPage /> },
   { path: "/", element: <CalendarPage /> },
   { path: "/Login", element: <Authentication /> },
   { path: "*", element: <PageNotFound /> },
