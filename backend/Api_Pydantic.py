@@ -76,9 +76,9 @@ class CalendarSubscriptionUpdate(BaseModel):
     is_hidden: bool
     
 class CalendarSubscriptionRead(BaseModel):
-    calendar_id= UUID
-    subscriber_user_id= UUID
-    is_hidden= bool
+    calendar_id: UUID
+    subscriber_user_id: UUID
+    is_hidden: bool
 
 # -----
 # Events, Recurrence, Reminders & Event Sharing a Copy
@@ -158,4 +158,4 @@ class APIError(BaseModel):
 #keys makes sure that the subkeys.get and get authentication
 class BrowserPushSubscription(BaseModel):
     endpoint: str
-    keys: Optional[Dict[str,str]]= None
+    keys: Optional[Dict[str, str]] = None
