@@ -9,7 +9,7 @@ from cryptography.fernet import Fernet
 ROOT_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT_DIR / ".env")
 
-ENV_VAR_NAME = "EVENT_TITLE_KEY"
+ENV_VAR_NAME = "EVENT_TITLE_KEY".
 
 
 def generate_key() -> str:
