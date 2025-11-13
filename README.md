@@ -41,3 +41,4 @@ Comments
 
 Unit Test:
 https://youtu.be/O4QeY0d-43Y
+Encryption logic added to backend for securing event titles.
