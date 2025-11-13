@@ -48,3 +48,4 @@ def decrypt_title(encrypted_title: str) -> str:
     f = _get_fernet()
     plain = f.decrypt(encrypted_title.encode("utf-8"))
     return plain.decode("utf-8")
+# TODO: integrate encryption into event creation API
