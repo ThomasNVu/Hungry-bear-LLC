@@ -51,8 +51,8 @@ function Register() {
     try {
       await createUserWithEmailAndPassword(auth, email, password);
       navigate("/");
-    } catch (err: any) {
-      setError(err?.message ?? "Failed to create account. Please try again.");
+    } catch (error: unknown) {
+      setError(error?.message ?? "Failed to create account. Please try again.");
     } finally {
       setSubmitting(false);
     }

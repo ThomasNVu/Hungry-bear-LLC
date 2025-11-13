@@ -38,8 +38,9 @@ function Authentication() {
     try {
       await signInWithEmailAndPassword(auth, email, password);
       navigate("/");
-    } catch (err: any) {
+    } catch (error: unknown) {
       setError("Incorrect username or password.");
+      console.log(error);
     } finally {
       setSubmitting(false);
     }
