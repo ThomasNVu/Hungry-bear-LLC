@@ -12,6 +12,10 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase
 
+#Import for the generator type that will handle the async sessios
+from typing import AsyncGenerator
+#from Api_Structure import create_user
+
 
 # --- Load .env from project root ---
 BASE_DIR = Path(__file__).resolve().parents[1]  # project root (folder that contains backend/)
@@ -73,13 +77,18 @@ async def lifespan(app):
         yield
     finally:
         await engine.dispose()
+#Since Async yeilds it is technically a generator and gives the IDE some trouble
+# FastAPI dependency
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
+    async with SessionLocal() as session:
+        yield session
 
-
+"""
 # FastAPI dependency
 async def get_session() -> AsyncSession:
     async with SessionLocal() as session:
         yield session
-
+"""
 
 #--- OLD CODE NOT USING BUT KEEPING COMMENTED FOR NOW ---
 """
@@ -128,3 +137,4 @@ async def get_session() -> AsyncSession:
     async with SessionLocal() as session:
         yield session
 """
+
