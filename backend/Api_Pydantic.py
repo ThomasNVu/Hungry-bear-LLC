@@ -10,9 +10,11 @@ from pydantic import BaseModel, Field, ConfigDict, model_validator
 # Auth / Users
 # -------
 
+
 class LoginRequest(BaseModel):
     email: str
     password: str
+
 
 class UserBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -20,8 +22,10 @@ class UserBase(BaseModel):
     full_name: Optional[str] = None
     avatar_url: Optional[str] = None
 
+
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8)
+
 
 # -------
 # 2 Roles Admin or User
@@ -33,23 +37,28 @@ class UserRead(UserBase):
     created_at: datetime
     updated_at: datetime
 
+
 class UserUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     full_name: Optional[str] = None
     avatar_url: Optional[str] = None
 
+
 # ---------------------------
 # Calendars/Sharing
 # ---------------------------
+
 
 class CalendarCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     visibility: Literal["public", "private"] = "private"
 
+
 class CalendarUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     visibility: Optional[Literal["public", "private"]] = None
+
 
 class CalendarRead(BaseModel):
     id: UUID
@@ -59,35 +68,43 @@ class CalendarRead(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+
 class CalendarShareCreate(BaseModel):
-    model_config= ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid")
     user_id: UUID
+
 
 class CalendarShareRead(BaseModel):
     calendar_id: UUID
     user_id: UUID
-    permission: Optional[str]=None
+    permission: Optional[str] = None
+
 
 # ---------
 # Hidden Feature
 # ---------
 
+
 class CalendarSubscriptionUpdate(BaseModel):
     is_hidden: bool
-    
+
+
 class CalendarSubscriptionRead(BaseModel):
     calendar_id: UUID
     subscriber_user_id: UUID
     is_hidden: bool
 
+
 # -----
 # Events, Recurrence, Reminders & Event Sharing a Copy
 # -------
+
 
 class Reminder(BaseModel):
     model_config = ConfigDict(extra="ignore")
     minutes_before_start: int = Field(..., ge=0, le=10080)
     method: Literal["popup"] = "popup"
+
 
 class EventBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -109,8 +126,10 @@ class EventBase(BaseModel):
             raise ValueError("end_at must be after start_at")
         return self
 
+
 class EventCreate(EventBase):
     pass
+
 
 class EventUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -131,6 +150,7 @@ class EventUpdate(BaseModel):
             raise ValueError("end_at must be after start_at")
         return self
 
+
 class EventRead(EventBase):
     id: UUID
     calendar_id: UUID
@@ -138,24 +158,29 @@ class EventRead(EventBase):
     created_at: datetime
     updated_at: datetime
 
+
 class EventShareCreate(BaseModel):
-    model_config = ConfigDict (extra="forbid")
+    model_config = ConfigDict(extra="forbid")
     user_id: UUID
+
 
 class EventShareRead(BaseModel):
     event_id: UUID
     user_id: UUID
     permission: Optional[str] = None
 
+
 # ---------------------------
 # Errors / Notifications
 # ---------------------------
 
+
 class APIError(BaseModel):
     message: str = Field(...)
     code: str = Field(...)
-    
-#keys makes sure that the subkeys.get and get authentication
+
+
+# keys makes sure that the subkeys.get and get authentication
 class BrowserPushSubscription(BaseModel):
     endpoint: str
     keys: Optional[Dict[str, str]] = None
