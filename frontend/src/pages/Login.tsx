@@ -1,21 +1,27 @@
 import { useState, useEffect } from "react";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+} from "firebase/auth";
 import { auth } from "../firebaseConfig";
+import { handleSubmit } from "./Config";
 
 export default function Login() {
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState("");
-  const [user, setUser] = useState<any>(null);  // Store the user object (null means not logged in)
+  const [user, setUser] = useState<any>(null); // Store the user object (null means not logged in)
 
   // Monitor Firebase authentication state
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);  // Update user state when auth state changes
+      setUser(currentUser); // Update user state when auth state changes
     });
 
-    return () => unsubscribe();  // Clean up on unmount
+    return () => unsubscribe(); // Clean up on unmount
   }, []);
 
   const submit = async (e: React.FormEvent) => {
@@ -39,7 +45,7 @@ export default function Login() {
   };
 
   return (
-    <div style={{ maxWidth: 320, margin: "48px auto", textAlign: "center" }}>
+    <div className=" min-h-screen flex items-center justify-center px-4">
       {user ? (
         <div>
           <h2>Welcome, {user.email}</h2>
@@ -64,11 +70,17 @@ export default function Login() {
             />
             <br />
             <br />
-            <button type="submit">{mode === "login" ? "Login" : "Create account"}</button>
+            <button type="submit">
+              {mode === "login" ? "Login" : "Create account"}
+            </button>
           </form>
           <p>{msg}</p>
-          <button onClick={() => setMode(mode === "login" ? "register" : "login")}>
-            {mode === "login" ? "Need an account? Register" : "Already have an account? Login"}
+          <button
+            onClick={() => setMode(mode === "login" ? "register" : "login")}
+          >
+            {mode === "login"
+              ? "Need an account? Register"
+              : "Already have an account? Login"}
           </button>
         </div>
       )}
