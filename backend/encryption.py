@@ -1,7 +1,7 @@
 from __future__ import annotations  # backend/encryption.py
 
 from pathlib import Path
-from dotenv import load_doten
+from dotenv import load_dotenv
 import os
 from cryptography.fernet import Fernet
 
