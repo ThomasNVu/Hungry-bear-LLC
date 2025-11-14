@@ -5,6 +5,7 @@ import uuid
 
 BASE = "http://127.0.0.1:8000"
 
+
 async def main():
     unique = uuid.uuid4().hex[:6]
     email = f"dani+{unique}@example.com"
@@ -37,6 +38,7 @@ async def main():
         # Optional: if you have /users/me
         r = await client.get("/users/me", headers=headers)
         print("GET /users/me:", r.status_code, r.json())
+
 
 if __name__ == "__main__":
     asyncio.run(main())
