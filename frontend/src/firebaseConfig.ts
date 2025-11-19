@@ -1,7 +1,10 @@
 // Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getAnalytics } from "firebase/analytics";
+import {
+  getAnalytics,
+  isSupported as analyticsSupported,
+} from "firebase/analytics";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -11,12 +14,17 @@ const firebaseConfig = {
   storageBucket: "hungry-bear-llc.firebasestorage.app",
   messagingSenderId: "1081997800081",
   appId: "1:1081997800081:web:10434d9c9a31c52f494530",
-  measurementId: "G-Y60FYMZN7B"
+  measurementId: "G-Y60FYMZN7B",
 };
 
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+(async () => {
+  if (typeof window !== "undefined" && (await analyticsSupported())) {
+    getAnalytics(app);
+  }
+})();
 
 // Initialize Firebase Auth
 export const auth = getAuth(app);

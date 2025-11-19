@@ -3,22 +3,22 @@ from __future__ import annotations
 import os
 import ssl
 from pathlib import Path
-from contextlib import asynccontextmanager   
+from contextlib import asynccontextmanager
 
 import certifi
 from dotenv import load_dotenv
-from sqlalchemy.ext.asyncio import (
-    create_async_engine, async_sessionmaker, AsyncSession
-)
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
 
-#Import for the generator type that will handle the async sessios
+# Import for the generator type that will handle the async sessios
 from typing import AsyncGenerator
-#from Api_Structure import create_user
+# from Api_Structure import create_user
 
 
 # --- Load .env from project root ---
-BASE_DIR = Path(__file__).resolve().parents[1]  # project root (folder that contains backend/)
+BASE_DIR = (
+    Path(__file__).resolve().parents[1]
+)  # project root (folder that contains backend/)
 ENV_PATH = BASE_DIR / ".env"
 load_dotenv(ENV_PATH)
 
@@ -51,9 +51,9 @@ engine = create_async_engine(
 )
 """
 
+
 class Base(DeclarativeBase):
     pass
-
 
 
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
@@ -69,19 +69,22 @@ async def lifespan(app):
     from . import models  # noqa: F401  (needed to populate Base.metadata)
 
     # ----- RUN THESE TWO LINES ONCE to create tables -----
-    #async with engine.begin() as conn:
-        #await conn.run_sync(Base.metadata.create_all)
+    # async with engine.begin() as conn:
+    # await conn.run_sync(Base.metadata.create_all)
     # ------------------------------------
 
     try:
         yield
     finally:
         await engine.dispose()
-#Since Async yeilds it is technically a generator and gives the IDE some trouble
+
+
+# Since Async yeilds it is technically a generator and gives the IDE some trouble
 # FastAPI dependency
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     async with SessionLocal() as session:
         yield session
+
 
 """
 # FastAPI dependency
@@ -90,7 +93,7 @@ async def get_session() -> AsyncSession:
         yield session
 """
 
-#--- OLD CODE NOT USING BUT KEEPING COMMENTED FOR NOW ---
+# --- OLD CODE NOT USING BUT KEEPING COMMENTED FOR NOW ---
 """
 # backend/db.py
 from __future__ import annotations
@@ -137,4 +140,3 @@ async def get_session() -> AsyncSession:
     async with SessionLocal() as session:
         yield session
 """
-
