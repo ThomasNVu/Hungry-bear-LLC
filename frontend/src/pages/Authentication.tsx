@@ -3,6 +3,7 @@ import { AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
 import { signInWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
 import { auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
+import API from "../components/client";
 
 function Authentication() {
   const [formVisible, setFormVisible] = useState(false);
@@ -36,11 +37,20 @@ function Authentication() {
     )?.value;
 
     try {
+      // Logs in to Firebase
       await signInWithEmailAndPassword(auth, email, password);
+
+      // Logs in to backend
+      const res = await API.post("/login", { email, password });
+      // Stores Token Locally before navigation so downstream requests have auth
+      const accessToken = res.data?.access_token;
+      if (accessToken) {
+        localStorage.setItem("authToken", accessToken);
+      }
       navigate("/");
     } catch (error: unknown) {
-      setError("Incorrect username or password.");
       console.log(error);
+      setError("Incorrect username or password.");
     } finally {
       setSubmitting(false);
     }

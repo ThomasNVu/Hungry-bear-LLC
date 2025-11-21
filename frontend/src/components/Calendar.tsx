@@ -3,19 +3,34 @@ import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import { INITIAL_EVENTS, createEventId } from "../event-utils";
 import "../styles/calendar.css";
+import API from "./client";
 import type {
   DateSelectArg,
   EventClickArg,
   EventContentArg,
   EventApi,
+  EventSourceInput,
 } from "@fullcalendar/core";
 
 type Props = {
   onEventsChange?: (events: EventApi[]) => void;
   onMonthChange?: (date: Date) => void;
+  calendarId?: string;
 };
 
-export default function Calendar({ onEventsChange, onMonthChange }: Props) {
+type ApiEvent = {
+  id: string;
+  title?: string | null;
+  start_at: string;
+  end_at: string;
+  all_day?: boolean;
+};
+
+export default function Calendar({
+  onEventsChange,
+  onMonthChange,
+  calendarId,
+}: Props) {
   function handleDateSelect(selectInfo: DateSelectArg) {
     const title =
       window.prompt("Please enter a new title for your event")?.trim() ?? "";
@@ -53,6 +68,31 @@ export default function Calendar({ onEventsChange, onMonthChange }: Props) {
     );
   }
 
+  const eventSource: EventSourceInput = calendarId
+    ? async (info, success, failure) => {
+        try {
+          const res = await API.get(`/calendars/${calendarId}/events`, {
+            params: {
+              start_from: info.startStr,
+              start_to: info.endStr,
+            },
+          });
+          success(
+            (res.data as ApiEvent[]).map((ev) => ({
+              id: ev.id,
+              title: ev.title ?? "Busy",
+              start: ev.start_at,
+              end: ev.end_at,
+              allDay: ev.all_day,
+            })),
+          );
+        } catch (err) {
+          console.error("events fetch failed", err);
+          failure(err as Error);
+        }
+      }
+    : INITIAL_EVENTS;
+
   return (
     <FullCalendar
       plugins={[dayGridPlugin, interactionPlugin]}
@@ -72,7 +112,7 @@ export default function Calendar({ onEventsChange, onMonthChange }: Props) {
       selectMirror={true}
       dayMaxEvents={true}
       dayMaxEventRows={true}
-      initialEvents={INITIAL_EVENTS}
+      events={eventSource}
       select={handleDateSelect}
       eventClick={handleEventClick}
       eventContent={renderEventContent}

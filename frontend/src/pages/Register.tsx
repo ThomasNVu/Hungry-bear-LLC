@@ -6,6 +6,7 @@ import {
 } from "firebase/auth";
 import { auth } from "../firebaseConfig";
 import { useNavigate } from "react-router-dom";
+import API from "../components/client";
 
 function Register() {
   const [formVisible, setFormVisible] = useState(false);
@@ -32,6 +33,9 @@ function Register() {
     setError("");
     setSubmitting(true);
 
+    const fullName = (
+      e.currentTarget.elements.namedItem("fullName") as HTMLInputElement
+    )?.value;
     const email = (
       e.currentTarget.elements.namedItem("email") as HTMLInputElement
     )?.value;
@@ -50,16 +54,33 @@ function Register() {
 
     try {
       await createUserWithEmailAndPassword(auth, email, password);
+
+      const newUser = auth.currentUser;
+
+      //Creates New User in Backend
+      await API.post("/users", {
+        email: newUser?.email,
+        full_name: fullName || "",
+        avatar_url: null,
+      });
+
+      // Auto Login to Backend
+      const res = await API.post("/login", { email, password });
+      const token = res.data?.access_token;
+      if (token) {
+        localStorage.setItem("authToken", token);
+      }
+
       navigate("/");
     } catch (error: unknown) {
-      setError(error?.message ?? "Failed to create account. Please try again.");
+      setError("Failed to create account. Please try again.");
+      console.log(error);
     } finally {
       setSubmitting(false);
     }
   };
 
   const goToLogin = () => {
-    // Make sure this path matches your <Route path="/login" ... />
     navigate("/login");
   };
 
@@ -76,6 +97,20 @@ function Register() {
         ease-out`}
       >
         <form className="space-y-6" onSubmit={handleSubmit} noValidate>
+          <div>
+            <label htmlFor="fullName" className="block mb-1.5">
+              Full Name
+            </label>
+            <input
+              type="text"
+              name="fullName"
+              id="fullName"
+              placeholder="Enter Full Name"
+              autoComplete="name"
+              className="w-full border border-[#78502C] bg-transparent rounded-md p-3 outline-none text-xs"
+            />
+          </div>
+
           <div>
             <label htmlFor="email" className="block mb-1.5">
               Email Address

@@ -8,11 +8,15 @@ import PageNotFound from "./pages/PageNotFound.tsx";
 import CalendarPage from "./pages/CalendarPage.tsx";
 import TestPage from "./pages/TestPage.tsx";
 import Register from "./pages/Register.tsx";
+import ApiLoginTest from "./pages/ApiLoginTest.tsx";
+import ApiUserCreateTest from "./pages/ApiUserCreateTest.tsx";
 
 const router = createBrowserRouter([
   { path: "/Test", element: <TestPage /> },
   { path: "/", element: <CalendarPage /> },
   { path: "/Login", element: <Authentication /> },
+  { path: "/dev/login-test", element: <ApiLoginTest /> },
+  { path: "/dev/user-test", element: <ApiUserCreateTest /> },
   { path: "*", element: <PageNotFound /> },
   { path: "/Register", element: <Register /> },
 ]);

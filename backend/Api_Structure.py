@@ -7,6 +7,7 @@ from .models import PushSubscription
 
 from fastapi import FastAPI, Depends, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordBearer
+from fastapi.middleware.cors import CORSMiddleware
 
 # NEW: SQLAlchemy imports for queries + session typing
 from sqlalchemy import select, update, delete
@@ -51,7 +52,19 @@ from .models import (
 
 # CHANGE: add lifespan=lifespan so the DB engine/session lifecycle is managed
 app = FastAPI(title="Calendar API", version="0.1.0", lifespan=lifespan)
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ------
 # in the works
@@ -139,7 +152,7 @@ async def get_current_user(
         id=user.id,
         email=user.email,
         full_name=user.full_name,
-        avatar_url=user.avatar_url,
+        # avatar_url=user.avatar_url,
         is_active=user.is_active,
         role=user.role,
         created_at=user.created_at,
@@ -175,7 +188,7 @@ async def create_user(
     if exists:
         raise HTTPException(409, "Email already exists")
     user = User(
-        email=payload.email, full_name=payload.full_name, avatar_url=payload.avatar_url
+        email=payload.email, full_name=payload.full_name
     )
     session.add(user)
     await session.commit()
@@ -184,7 +197,7 @@ async def create_user(
         id=user.id,
         email=user.email,
         full_name=user.full_name,
-        avatar_url=user.avatar_url,
+        # avatar_url=user.avatar_url,
         is_active=user.is_active,
         role=user.role,
         created_at=user.created_at,
@@ -207,7 +220,7 @@ async def get_user(
         "id": user.id,
         "email": user.email,
         "full_name": user.full_name,
-        "avatar_url": user.avatar_url,
+        # "avatar_url": user.avatar_url,
         "is_active": user.is_active,
         "role": user.role,
         "created_at": user.created_at,
@@ -236,7 +249,7 @@ async def update_user(
         "id": user.id,
         "email": user.email,
         "full_name": user.full_name,
-        "avatar_url": user.avatar_url,
+        # "avatar_url": user.avatar_url,
         "is_active": user.is_active,
         "role": user.role,
         "created_at": user.created_at,
