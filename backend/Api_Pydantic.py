@@ -20,7 +20,7 @@ class UserBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
     email: str
     full_name: Optional[str] = None
-    # avatar_url: Optional[str] = None
+    avatar_url: Optional[str] = None
 
 
 class UserCreate(UserBase):
@@ -43,7 +43,7 @@ class UserRead(UserBase):
 class UserUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     full_name: Optional[str] = None
-    # avatar_url: Optional[str] = None
+    avatar_url: Optional[str] = None
 
 
 # ---------------------------

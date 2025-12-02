@@ -9,7 +9,7 @@ from cryptography.fernet import Fernet
 ROOT_DIR = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT_DIR / ".env")
 
-ENV_VAR_NAME = "EVENT_TITLE_KEY".
+ENV_VAR_NAME = "EVENT_TITLE_KEY"
 
 
 def generate_key() -> str:
@@ -48,4 +48,6 @@ def decrypt_title(encrypted_title: str) -> str:
     f = _get_fernet()
     plain = f.decrypt(encrypted_title.encode("utf-8"))
     return plain.decode("utf-8")
+
+
 # TODO: integrate encryption into event creation API

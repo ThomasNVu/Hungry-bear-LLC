@@ -187,9 +187,7 @@ async def create_user(
     ).scalar_one_or_none()
     if exists:
         raise HTTPException(409, "Email already exists")
-    user = User(
-        email=payload.email, full_name=payload.full_name
-    )
+    user = User(email=payload.email, full_name=payload.full_name)
     session.add(user)
     await session.commit()
     await session.refresh(user)
