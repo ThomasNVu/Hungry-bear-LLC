@@ -1,29 +1,25 @@
 import FullCalendar from "@fullcalendar/react";
+import { useCallback, useMemo } from "react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import { INITIAL_EVENTS, createEventId } from "../event-utils";
 import "../styles/calendar.css";
 import API from "./client";
+import { toFullCalendar, fromSelection } from "../utils/eventMapper";
 import type {
   DateSelectArg,
   EventClickArg,
   EventContentArg,
   EventApi,
   EventSourceInput,
+  EventSourceFunc,
 } from "@fullcalendar/core";
+import type { ApiEvent } from "../utils/eventMapper";
 
 type Props = {
   onEventsChange?: (events: EventApi[]) => void;
   onMonthChange?: (date: Date) => void;
   calendarId?: string;
-};
-
-type ApiEvent = {
-  id: string;
-  title?: string | null;
-  start_at: string;
-  end_at: string;
-  all_day?: boolean;
 };
 
 export default function Calendar({
@@ -38,7 +34,10 @@ export default function Calendar({
 
     calendarApi.unselect();
 
-    if (title) {
+    if (!title) return;
+
+    // If we don't have a calendarId, fall back to local-only add.
+    if (!calendarId) {
       calendarApi.addEvent({
         id: createEventId(),
         title,
@@ -46,13 +45,41 @@ export default function Calendar({
         end: selectInfo.endStr,
         allDay: selectInfo.allDay,
       });
+      return;
     }
+
+    // Create on backend, then add to calendar using the response.
+    (async () => {
+      try {
+        const payload = fromSelection(title, selectInfo);
+        const res = await API.post(`/calendars/${calendarId}/events`, payload);
+        calendarApi.addEvent(toFullCalendar(res.data as ApiEvent));
+      } catch (err) {
+        console.error("Failed to create event", err);
+        window.alert("Could not create event. Please try again.");
+      }
+    })();
   }
 
   function handleEventClick(clickInfo: EventClickArg) {
-    if (window.confirm(`Delete '${clickInfo.event.title}'?`)) {
+    if (!window.confirm(`Delete '${clickInfo.event.title}'?`)) return;
+
+    const id = clickInfo.event.id;
+    // If we have no calendarId, just remove locally.
+    if (!calendarId) {
       clickInfo.event.remove();
+      return;
     }
+
+    (async () => {
+      try {
+        await API.delete(`/events/${id}`);
+        clickInfo.event.remove();
+      } catch (err) {
+        console.error("Failed to delete event", err);
+        window.alert("Could not delete event. Please try again.");
+      }
+    })();
   }
 
   // function handleEvents(events : ) {
@@ -68,30 +95,26 @@ export default function Calendar({
     );
   }
 
-  const eventSource: EventSourceInput = calendarId
-    ? async (info, success, failure) => {
-        try {
-          const res = await API.get(`/calendars/${calendarId}/events`, {
-            params: {
-              start_from: info.startStr,
-              start_to: info.endStr,
-            },
-          });
-          success(
-            (res.data as ApiEvent[]).map((ev) => ({
-              id: ev.id,
-              title: ev.title ?? "Busy",
-              start: ev.start_at,
-              end: ev.end_at,
-              allDay: ev.all_day,
-            })),
-          );
-        } catch (err) {
-          console.error("events fetch failed", err);
-          failure(err as Error);
-        }
-      }
-    : INITIAL_EVENTS;
+  const fetchEvents = useCallback<EventSourceFunc>(async (info, success, failure) => {
+    if (!calendarId) return;
+    try {
+      const res = await API.get(`/calendars/${calendarId}/events`, {
+        params: {
+          start_from: info.startStr,
+          start_to: info.endStr,
+        },
+      });
+      success((res.data as ApiEvent[]).map((ev) => toFullCalendar(ev)));
+    } catch (err) {
+      console.error("events fetch failed", err);
+      failure(err as Error);
+    }
+  }, [calendarId]);
+
+  const eventSource: EventSourceInput = useMemo(
+    () => (calendarId ? fetchEvents : INITIAL_EVENTS),
+    [calendarId, fetchEvents],
+  );
 
   return (
     <FullCalendar

@@ -8,6 +8,12 @@ import type { EventApi } from "@fullcalendar/core";
 export default function CalendarPage() {
   const [currentDate, setCurrentDate] = React.useState<Date>(new Date());
   const [events, setEvents] = React.useState<EventApi[]>([]);
+  // For now, point FullCalendar at a specific backend calendar. Set this in .env as VITE_DEFAULT_CALENDAR_ID.
+  const defaultCalendarId =
+    import.meta.env.VITE_DEFAULT_CALENDAR_ID ||
+    (typeof localStorage !== "undefined"
+      ? localStorage.getItem("calendarId") || ""
+      : "");
 
   const toLocalMonthAnchor = (date: Date) =>
     new Date(date.getUTCFullYear(), date.getUTCMonth(), 1);
@@ -23,6 +29,7 @@ export default function CalendarPage() {
       <div className="flex-grow grid grid-cols-5 grid-rows-5 gap-y-6 gap-x-8 p-2 h-[80%]">
         <div className="col-start-2 col-end-6 row-start-1 row-end-6 p-4">
           <Calendar
+            calendarId={defaultCalendarId || undefined}
             onEventsChange={(event) => setEvents(event)}
             onMonthChange={(date) => setCurrentDate(date)}
           />
