@@ -1,5 +1,5 @@
 import FullCalendar from "@fullcalendar/react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, useEffect } from "react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import { INITIAL_EVENTS, createEventId } from "../event-utils";
@@ -95,6 +95,14 @@ export default function Calendar({
     () => (calendarId ? fetchEvents : INITIAL_EVENTS),
     [calendarId, fetchEvents],
   );
+
+  // Refetch when calendar changes so we see existing events immediately.
+  useEffect(() => {
+    if (calendarId) {
+      const api = calendarRef.current?.getApi();
+      api?.refetchEvents();
+    }
+  }, [calendarId]);
 
   const handleCreate = async (form: {
     title: string;

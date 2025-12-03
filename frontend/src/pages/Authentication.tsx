@@ -40,12 +40,16 @@ function Authentication() {
       // Logs in to Firebase
       await signInWithEmailAndPassword(auth, email, password);
 
-      // Logs in to backend
-      const res = await API.post("/login", { email, password });
-      // Stores Token Locally before navigation so downstream requests have auth
-      const accessToken = res.data?.access_token;
-      if (accessToken) {
-        localStorage.setItem("authToken", accessToken);
+      // Send Firebase ID token to backend
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error("Missing Firebase ID token");
+      const res = await API.post("/login", { id_token: idToken });
+      const accessToken = res.data?.access_token ?? idToken;
+      const defaultCalId = res.data?.default_calendar?.id;
+      localStorage.setItem("authToken", accessToken);
+      if (defaultCalId) {
+        localStorage.setItem("calendarId", defaultCalId);
+        window.dispatchEvent(new Event("calendarIdUpdated"));
       }
       navigate("/");
     } catch (error: unknown) {

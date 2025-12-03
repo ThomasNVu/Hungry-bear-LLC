@@ -3,11 +3,14 @@ from __future__ import annotations
 from typing import Optional, List, Literal, Dict, Tuple, Set
 from uuid import UUID, uuid4
 from datetime import datetime
+import os
 from .models import PushSubscription
 
 from fastapi import FastAPI, Depends, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
+from google.oauth2 import id_token as google_id_token
+from google.auth.transport import requests as google_requests
 
 # NEW: SQLAlchemy imports for queries + session typing
 from sqlalchemy import select, update, delete
@@ -57,6 +60,7 @@ origins = [
     "http://127.0.0.1:5173",
 ]
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "hungry-bear-llc")
 
 app.add_middleware(
     CORSMiddleware,
@@ -140,6 +144,33 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> UserRead:
 """
 
 
+async def get_or_create_default_calendar(
+    user: User, session: AsyncSession
+) -> "Calendar":
+    """
+    Ensures each user has a default calendar named 'My Calendar'.
+    """
+    result = await session.execute(
+        select(Calendar).where(
+            Calendar.owner_user_id == user.id,
+            Calendar.name == "My Calendar",
+        )
+    )
+    cal = result.scalar_one_or_none()
+    if cal:
+        return cal
+
+    cal = Calendar(
+        owner_user_id=user.id,
+        name="My Calendar",
+        visibility="private",
+    )
+    session.add(cal)
+    await session.commit()
+    await session.refresh(cal)
+    return cal
+
+
 async def get_current_user(
     token: str = Depends(oauth2_scheme), session: AsyncSession = Depends(get_session)
 ) -> UserRead:
@@ -147,7 +178,51 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token"
         )
-    user = await ensure_demo_user(session)
+    try:
+        decoded = google_id_token.verify_firebase_token(
+            token, google_requests.Request(), audience=FIREBASE_PROJECT_ID
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token"
+        ) from exc
+
+    firebase_uid = decoded.get("user_id") or decoded.get("uid")
+    email = decoded.get("email")
+    full_name = decoded.get("name")
+    if not firebase_uid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token missing uid",
+        )
+
+    # Prefer lookup by firebase_uid, then by email, updating the uid if missing.
+    user = (
+        await session.execute(select(User).where(User.firebase_uid == firebase_uid))
+    ).scalar_one_or_none()
+    if not user and email:
+        user = (
+            await session.execute(select(User).where(User.email == email))
+        ).scalar_one_or_none()
+
+    if not user:
+        user = User(
+            email=email or f"{firebase_uid}@placeholder.local",
+            firebase_uid=firebase_uid,
+            full_name=full_name or None,
+            role="user",
+            is_active=True,
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+    elif not user.firebase_uid:
+        user.firebase_uid = firebase_uid
+        if full_name and not user.full_name:
+            user.full_name = full_name
+        await session.commit()
+        await session.refresh(user)
+
     return UserRead(
         id=user.id,
         email=user.email,
@@ -164,10 +239,76 @@ async def get_current_user(
 # Auth (login/logout)
 # --------------------------------------------------------------------
 @app.post("/login")
-async def login(payload: LoginRequest):
-    if payload.email and payload.password:
-        return {"access_token": "demo-token", "token_type": "bearer"}
-    raise HTTPException(status_code=401, detail="Invalid credentials")
+async def login(
+    payload: LoginRequest, session: AsyncSession = Depends(get_session)
+):
+    """
+    Validate Firebase ID token, ensure the user exists locally (by firebase_uid/email),
+    and echo the token back for bearer auth.
+    """
+    try:
+        decoded = google_id_token.verify_firebase_token(
+            payload.id_token,
+            google_requests.Request(),
+            audience=FIREBASE_PROJECT_ID,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Invalid credentials") from exc
+
+    firebase_uid = decoded.get("user_id") or decoded.get("uid")
+    email = decoded.get("email")
+    full_name = decoded.get("name")
+    if not firebase_uid:
+        raise HTTPException(status_code=401, detail="Token missing uid")
+
+    user = (
+        await session.execute(select(User).where(User.firebase_uid == firebase_uid))
+    ).scalar_one_or_none()
+    if not user and email:
+        user = (
+            await session.execute(select(User).where(User.email == email))
+        ).scalar_one_or_none()
+
+    if not user:
+        user = User(
+            email=email or f"{firebase_uid}@placeholder.local",
+            firebase_uid=firebase_uid,
+            full_name=full_name or None,
+            role="user",
+            is_active=True,
+        )
+        session.add(user)
+        await session.commit()
+    elif not user.firebase_uid:
+        user.firebase_uid = firebase_uid
+        if full_name and not user.full_name:
+            user.full_name = full_name
+        await session.commit()
+
+    await session.refresh(user)
+    cal = await get_or_create_default_calendar(user, session)
+
+    return {
+        "access_token": payload.id_token,
+        "token_type": "bearer",
+        "user": {
+            "id": str(user.id),
+            "email": user.email,
+            "full_name": user.full_name,
+            "is_active": user.is_active,
+            "role": user.role,
+            "created_at": user.created_at,
+            "updated_at": user.updated_at,
+        },
+        "default_calendar": {
+            "id": str(cal.id),
+            "owner_user_id": str(cal.owner_user_id),
+            "name": cal.name,
+            "visibility": cal.visibility,
+            "created_at": cal.created_at,
+            "updated_at": cal.updated_at,
+        },
+    }
 
 
 @app.post("/logout", status_code=204)
@@ -191,6 +332,9 @@ async def create_user(
     session.add(user)
     await session.commit()
     await session.refresh(user)
+
+    # Ensure each user gets a default calendar.
+    await get_or_create_default_calendar(user, session)
     return UserRead(
         id=user.id,
         email=user.email,
@@ -701,6 +845,9 @@ async def create_event(
     ).scalar_one_or_none()
     if not cal:
         raise HTTPException(404, "Calendar not found")
+    # Only the calendar owner can create events on it.
+    if cal.owner_user_id != current_user.id:
+        raise HTTPException(403, "Only calendar owner can create events")
     ev = Event(
         calendar_id=calendar_id,
         owner_user_id=current_user.id,

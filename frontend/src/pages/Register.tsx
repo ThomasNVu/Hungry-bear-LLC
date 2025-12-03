@@ -64,11 +64,16 @@ function Register() {
         avatar_url: null,
       });
 
-      // Auto Login to Backend
-      const res = await API.post("/login", { email, password });
-      const token = res.data?.access_token;
-      if (token) {
-        localStorage.setItem("authToken", token);
+      // Auto Login to Backend with Firebase ID token
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) throw new Error("Missing Firebase ID token");
+      const res = await API.post("/login", { id_token: idToken });
+      const token = res.data?.access_token ?? idToken;
+      const defaultCalId = res.data?.default_calendar?.id;
+      localStorage.setItem("authToken", token);
+      if (defaultCalId) {
+        localStorage.setItem("calendarId", defaultCalId);
+        window.dispatchEvent(new Event("calendarIdUpdated"));
       }
 
       navigate("/");

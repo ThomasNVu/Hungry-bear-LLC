@@ -10,10 +10,25 @@ import TestPage from "./pages/TestPage.tsx";
 import Register from "./pages/Register.tsx";
 import ApiLoginTest from "./pages/ApiLoginTest.tsx";
 import ApiUserCreateTest from "./pages/ApiUserCreateTest.tsx";
+import RequireAuth from "./components/RequireAuth.tsx";
 
 const router = createBrowserRouter([
-  { path: "/Test", element: <TestPage /> },
-  { path: "/", element: <CalendarPage /> },
+  {
+    path: "/Test",
+    element: (
+      <RequireAuth>
+        <TestPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: "/",
+    element: (
+      <RequireAuth>
+        <CalendarPage />
+      </RequireAuth>
+    ),
+  },
   { path: "/Login", element: <Authentication /> },
   { path: "/dev/login-test", element: <ApiLoginTest /> },
   { path: "/dev/user-test", element: <ApiUserCreateTest /> },

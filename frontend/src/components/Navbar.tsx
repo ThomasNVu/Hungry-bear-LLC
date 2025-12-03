@@ -8,8 +8,11 @@ function Navbar() {
   const handleSignOut = async () => {
     try {
       await signOut(auth);
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("calendarId");
+      window.dispatchEvent(new Event("calendarIdUpdated"));
       console.log("✅ User has been logged out.");
-      navigate("/login"); // 👈 optional redirect (back to login page)
+      navigate("/Login"); // 👈 optional redirect (back to login page)
     } catch (error) {
       console.error("❌ Error signing out:", error);
     }

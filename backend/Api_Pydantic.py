@@ -12,8 +12,7 @@ from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 
 class LoginRequest(BaseModel):
-    email: str
-    password: str
+    id_token: str
 
 
 class UserBase(BaseModel):
