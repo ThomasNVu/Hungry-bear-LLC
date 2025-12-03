@@ -145,17 +145,72 @@ async def get_current_user(
         created_at=user.created_at,
         updated_at=user.updated_at,
     )
+async def get_or_create_default_calendar(
+    user: User, session: AsyncSession
+) -> "Calendar":
+    # look for an existing default calendar
+    result = await session.execute(
+        select(Calendar).where(
+            Calendar.owner_user_id == user.id,
+            Calendar.name == "My Calendar",
+        )
+    )
+    cal = result.scalar_one_or_none()
+    if cal:
+        return cal
+
+    # create a blank one if none exists
+    cal = Calendar(
+        owner_user_id=user.id,
+        name="My Calendar",
+        visibility="private",  # you can change to "public" if you want
+    )
+    session.add(cal)
+    await session.commit()
+    await session.refresh(cal)
+    return cal
 
 
 # --------------------------------------------------------------------
 # Auth (login/logout)
 # --------------------------------------------------------------------
 @app.post("/login")
-async def login(payload: LoginRequest):
+async def login(payload: LoginRequest, session:AsyncSession = Depends(get_session)):
     if payload.email and payload.password:
+        result = await session.execute(select(User).where(User.email == payload.email))
+        user = result.scalar_one_or_none()
+         if not user:
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+
         return {"access_token": "demo-token", "token_type": "bearer"}
     raise HTTPException(status_code=401, detail="Invalid credentials")
+      # make sure they have a default calendar
+        cal = await get_or_create_default_calendar(user, session)
 
+        # Returns the calendar so frontend can open it immediately
+        return {
+            "access_token": "demo-token",
+            "token_type": "bearer",
+            "user": {
+                "id": str(user.id),
+                "email": user.email,
+                "full_name": user.full_name,
+                "is_active": user.is_active,
+                "role": user.role,
+                "created_at": user.created_at,
+                "updated_at": user.updated_at,
+            },
+            "default_calendar": {
+                "id": str(cal.id),
+                "owner_user_id": str(cal.owner_user_id),
+                "name": cal.name,
+                "visibility": cal.visibility,
+                "created_at": cal.created_at,
+                "updated_at": cal.updated_at,
+            },
+        }
+
+    raise HTTPException(status_code=401, detail="Invalid credentials")
 
 @app.post("/logout", status_code=204)
 async def logout(current_user: UserRead = Depends(get_current_user)):
@@ -180,6 +235,10 @@ async def create_user(
     session.add(user)
     await session.commit()
     await session.refresh(user)
+
+    #Automatically creates a defuault calendar.
+    await get_or_create_default_calendar(user, session)
+    
     return UserRead(
         id=user.id,
         email=user.email,
