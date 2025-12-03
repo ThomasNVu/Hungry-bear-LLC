@@ -4,6 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os
 from cryptography.fernet import Fernet
+from cryptography.fernet import InvalidToken
 
 # Load .env from project root (one level above backend/)
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -46,8 +47,31 @@ def decrypt_title(encrypted_title: str) -> str:
     Decrypts an encrypted event title from the DB.
     """
     f = _get_fernet()
-    plain = f.decrypt(encrypted_title.encode("utf-8"))
-    return plain.decode("utf-8")
+    try:
+        plain = f.decrypt(encrypted_title.encode("utf-8"))
+        return plain.decode("utf-8")
+    except InvalidToken:
+        # Legacy plaintext stored before encryption rollout
+        return encrypted_title
+
+
+# Generic helpers for other text fields.
+def encrypt_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    f = _get_fernet()
+    return f.encrypt(value.encode("utf-8")).decode("utf-8")
+
+
+def decrypt_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    f = _get_fernet()
+    try:
+        return f.decrypt(value.encode("utf-8")).decode("utf-8")
+    except InvalidToken:
+        # Legacy plaintext stored before encryption rollout
+        return value
 
 
 # TODO: integrate encryption into event creation API

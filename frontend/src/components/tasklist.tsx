@@ -69,7 +69,11 @@ export default function TaskList({ events = [] }: Props) {
                 </div>
               </div>
               <div className=" flex-1 flex flex-col">
-                <div className=" flex-2 text-[14px] leading-tight ">
+                <div
+                  className={`flex-2 text-[14px] leading-tight ${
+                    checked[event.id] ? "line-through text-black/50" : ""
+                  }`}
+                >
                   {event.title}
                 </div>
 

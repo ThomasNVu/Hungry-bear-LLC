@@ -42,7 +42,6 @@ export default function Calendar({
   }
 
   function handleEventClick(clickInfo: EventClickArg) {
-    // Left click: open dialog to edit
     setEditingEvent(clickInfo.event);
     setDialogOpen(true);
   }

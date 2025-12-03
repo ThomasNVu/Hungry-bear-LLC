@@ -8,6 +8,9 @@ import type { EventApi } from "@fullcalendar/core";
 export default function CalendarPage() {
   const [currentDate, setCurrentDate] = React.useState<Date>(new Date());
   const [events, setEvents] = React.useState<EventApi[]>([]);
+  const [visibility, setVisibility] = React.useState<"public" | "private">(
+    "private",
+  );
   // Track calendarId in state so it updates when localStorage changes.
   const [calendarId, setCalendarId] = React.useState<string | undefined>(() => {
     if (typeof localStorage !== "undefined") {
@@ -61,8 +64,16 @@ export default function CalendarPage() {
               </span>
             </h1>
           </div>
-          <div className=" bg-gray-400 flex items-center justify-center flex-[0.2]">
-            List of Calendars (div3)
+          <div className="bg-white border border-[#78502C33] flex items-center justify-between flex-[0.2] px-3 rounded shadow-sm">
+            <span className="text-sm text-[#78502C]">Visibility</span>
+            <button
+              type="button"
+              className="px-3 py-1 rounded bg-white text-sm border shadow-sm hover:shadow hover:bg-amber-100 transition"
+              title="Toggle calendar visibility (UI only)"
+              onClick={() => setVisibility((v) => (v === "public" ? "private" : "public"))}
+            >
+              {visibility === "public" ? "Make Private" : "Make Public"}
+            </button>
           </div>
           <div className="overflow-auto flex-[0.7]">
             <TaskList events={events} />

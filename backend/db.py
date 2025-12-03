@@ -21,6 +21,7 @@ BASE_DIR = (
 )  # project root (folder that contains backend/)
 ENV_PATH = BASE_DIR / ".env"
 load_dotenv(ENV_PATH)
+load_dotenv(BASE_DIR / "backend" / ".env", override=True)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 print("[DEBUG] DATABASE_URL =", DATABASE_URL)  # remove after it’s working

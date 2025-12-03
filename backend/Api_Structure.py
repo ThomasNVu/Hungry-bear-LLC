@@ -9,6 +9,7 @@ from .models import PushSubscription
 from fastapi import FastAPI, Depends, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
+from .encryption import encrypt_text, decrypt_text
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
 
@@ -753,8 +754,8 @@ async def list_events(
             "id": ev.id,
             "calendar_id": ev.calendar_id,
             "owner_user_id": ev.owner_user_id,
-            "title": ev.title,
-            "description": ev.description,
+            "title": decrypt_text(ev.title) or "",
+            "description": decrypt_text(ev.description),
             "location": ev.location,
             "start_at": ev.start_at,
             "end_at": ev.end_at,
@@ -819,8 +820,8 @@ async def get_event(
         "id": ev.id,
         "calendar_id": ev.calendar_id,
         "owner_user_id": ev.owner_user_id,
-        "title": ev.title,
-        "description": ev.description,
+        "title": decrypt_text(ev.title) or "",
+        "description": decrypt_text(ev.description),
         "location": ev.location,
         "start_at": ev.start_at,
         "end_at": ev.end_at,
@@ -851,8 +852,8 @@ async def create_event(
     ev = Event(
         calendar_id=calendar_id,
         owner_user_id=current_user.id,
-        title=payload.title,
-        description=payload.description,
+        title=encrypt_text(payload.title) or "",
+        description=encrypt_text(payload.description),
         location=payload.location,
         start_at=payload.start_at,
         end_at=payload.end_at,
@@ -868,8 +869,8 @@ async def create_event(
         "id": ev.id,
         "calendar_id": ev.calendar_id,
         "owner_user_id": ev.owner_user_id,
-        "title": ev.title,
-        "description": ev.description,
+        "title": decrypt_text(ev.title) or "",
+        "description": decrypt_text(ev.description),
         "location": ev.location,
         "start_at": ev.start_at,
         "end_at": ev.end_at,
@@ -898,15 +899,20 @@ async def update_event(
         raise HTTPException(403, "Only owner can update event")
 
     for k, v in payload.model_dump(exclude_unset=True).items():
-        setattr(ev, k, v)
+        if k == "title":
+            setattr(ev, k, encrypt_text(v) or "")
+        elif k == "description":
+            setattr(ev, k, encrypt_text(v))
+        else:
+            setattr(ev, k, v)
     await session.commit()
     await session.refresh(ev)
     return {
         "id": ev.id,
         "calendar_id": ev.calendar_id,
         "owner_user_id": ev.owner_user_id,
-        "title": ev.title,
-        "description": ev.description,
+        "title": decrypt_text(ev.title) or "",
+        "description": decrypt_text(ev.description),
         "location": ev.location,
         "start_at": ev.start_at,
         "end_at": ev.end_at,
