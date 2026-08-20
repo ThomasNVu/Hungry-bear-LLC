@@ -1,0 +1,9 @@
+# Local environment files may contain credentials.
+.env
+.env.*
+!.env.example
+
+# Python-generated files.
+__pycache__/
+*.py[cod]
+
