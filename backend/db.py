@@ -23,25 +23,12 @@ ENV_PATH = BASE_DIR / ".env"
 load_dotenv(ENV_PATH)
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-print("[DEBUG] DATABASE_URL =", DATABASE_URL)  # remove after it’s working
 
 if not DATABASE_URL:
     raise RuntimeError(f"DATABASE_URL not found. Checked: {ENV_PATH}")
 
-# --- Was getting an error in connecting to the database because of a firewall issue on my end.  ---
-# --- I had to relax the the cirtificate checks in order to test the connection to our db, I will fix update before we get to production. ---
-
-ssl_ctx = ssl.create_default_context()
-ssl_ctx.check_hostname = False
-ssl_ctx.verify_mode = ssl.CERT_NONE
-
-engine = create_async_engine(
-    DATABASE_URL,
-    connect_args={"ssl": ssl_ctx},
-    pool_pre_ping=True,
-)
-
-"""
+# Verify both the server certificate chain and hostname for every database
+# connection. certifi supplies a consistent CA bundle across environments.
 ssl_ctx = ssl.create_default_context(cafile=certifi.where())
 
 engine = create_async_engine(
@@ -49,7 +36,6 @@ engine = create_async_engine(
     connect_args={"ssl": ssl_ctx},
     pool_pre_ping=True,
 )
-"""
 
 
 class Base(DeclarativeBase):
